@@ -23,11 +23,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # Pages 를 아직 안 켰으면 여기서 켠다 — 저장소 설정을 손으로 만질 필요가 없다
-      - uses: actions/configure-pages@v5
-        with:
-          enablement: true
-
+      # configure-pages 의 `enablement: true` 는 쓰지 않는다 — GITHUB_TOKEN 으로는
+      # Pages 를 켤 수 없어서 첫 실행이 통째로 실패했다. Pages 는 저장소 설정에서
+      # 한 번만 켜면 되고(Source: GitHub Actions), 그 뒤로는 이 워크플로가 알아서 배포한다.
       - uses: actions/setup-node@v4
         with:
           node-version: 22

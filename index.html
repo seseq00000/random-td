@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <title>랜덤 타워디펜스</title>
+    <link rel="stylesheet" href="/src/ui/style.css" />
+  </head>
+  <body>
+    <!-- 입장 화면 — 닉네임을 받기 전에는 게임을 시작하지 않는다 -->
+    <div id="gate" class="overlay">
+      <div class="dialog">
+        <h1>랜덤 타워디펜스</h1>
+        <p class="sub">뽑기의 운을 조합·미션·도전으로 극복하는 타워디펜스</p>
+        <label for="nickname">닉네임</label>
+        <input id="nickname" type="text" maxlength="12" placeholder="12자 이내" autocomplete="off" />
+        <p id="gate-error" class="error" hidden></p>
+        <button id="btn-enter" class="primary wide">시작</button>
+        <div id="gate-ranking"></div>
+      </div>
+    </div>
+
+    <!-- 결과 화면 -->
+    <div id="result" class="overlay" hidden>
+      <div class="dialog">
+        <h1 id="result-title">결과</h1>
+        <p id="result-sub" class="sub"></p>
+        <div id="result-stats"></div>
+        <div id="result-ranking"></div>
+        <div class="dialog-actions">
+          <button id="btn-again" class="primary">다시 하기</button>
+          <button id="btn-change-name">닉네임 변경</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="app">
+      <!--
+        상단 고정 바 — 라이프·골드가 항상 제일 먼저 보여야 한다.
+        "다음 웨이브 시작"은 여기 페이즈 칩에 합쳤다. 웨이브마다 누르는 버튼이라
+        시트에 넣으면 매번 두 번 탭해야 한다.
+      -->
+      <header id="topbar">
+        <span class="hud-stat life">❤ <b id="stat-life">20</b></span>
+        <span class="hud-stat gold">◈ <b id="stat-gold">60</b></span>
+        <span class="hud-stat wave">W<b id="stat-wave">1</b></span>
+        <button id="btn-start" class="phase-chip">준비</button>
+      </header>
+
+      <div id="wave-preview"></div>
+
+      <div id="stage">
+        <canvas id="game" width="600" height="600"></canvas>
+        <div id="toast" hidden></div>
+      </div>
+
+      <!-- 시트 여는 줄. 자주 안 쓰는 건 전부 여기 뒤로 보냈다 -->
+      <nav id="sheet-tabs">
+        <button data-sheet="missions"><span>🎯</span>미션<em id="tab-missions"></em></button>
+        <button data-sheet="challenge"><span>⚡</span>도전<em id="tab-challenge"></em></button>
+        <button data-sheet="field"><span>🛡</span>필드<em id="tab-field"></em></button>
+        <button data-sheet="codex"><span>📖</span>도감</button>
+        <button data-sheet="log"><span>📜</span>기록</button>
+      </nav>
+
+      <!-- 하단 독 — 항상 보이는 건 뽑기와 보유 유닛뿐 -->
+      <div id="dock">
+        <button id="btn-draw" class="primary">뽑기 <em>10골드</em></button>
+        <div id="bench"></div>
+      </div>
+    </div>
+
+    <!-- 시트 — 탭으로 올라온다 -->
+    <div id="sheet-backdrop" hidden></div>
+    <section id="sheet" hidden>
+      <div class="sheet-head">
+        <h2 id="sheet-title"></h2>
+        <button id="sheet-close" aria-label="닫기">✕</button>
+      </div>
+      <div id="sheet-body"></div>
+    </section>
+
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

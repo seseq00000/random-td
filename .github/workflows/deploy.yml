@@ -1,0 +1,49 @@
+name: Deploy to GitHub Pages
+
+# main 에 푸시하면 테스트 → 빌드 → 배포까지 자동으로 간다.
+# 테스트를 배포 앞에 두는 게 핵심이다 — 깨진 판을 폰에서 보게 되면 안 된다.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# 연달아 푸시하면 앞의 배포는 취소한다
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      # typecheck 는 build 스크립트(tsc --noEmit && vite build)에 이미 들어 있다
+      - run: npm test
+      - run: npm run build
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

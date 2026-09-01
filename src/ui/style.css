@@ -435,6 +435,7 @@ canvas#game {
 /* ── 유닛 카드 ──────────────────────────────────── */
 
 .unit-card {
+  position: relative;
   display: flex;
   flex-direction: column;
   flex-shrink: 0;
@@ -445,7 +446,101 @@ canvas#game {
      동물은 옆의 글리프 색이 담당한다 — 두 축이 겹치지 않는다. */
   border-left: 4px solid var(--tier-color, var(--line));
   border-radius: 6px;
-  overflow: hidden;
+}
+
+/* ── 중복 = 겹쳐 쌓인 카드 ──────────────────────
+   몇 장인지 세지 않아도 "여러 장"이 실루엣으로 읽혀야 한다.
+   레이아웃에 영향을 주지 않도록 뒤에 깔린 장은 가짜 요소로 그린다. */
+.unit-card.stacked::before,
+.unit-card.stacked::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border: 1px solid var(--line);
+  border-left: 4px solid var(--tier-color, var(--line));
+  border-radius: 6px;
+  background: var(--card);
+  z-index: -1;
+}
+
+.unit-card.stacked::before {
+  transform: translate(3px, 4px);
+}
+
+.unit-card.stacked::after {
+  transform: translate(6px, 8px);
+  opacity: 0.55;
+}
+
+/* 뒤에 깔린 장이 옆 카드를 침범하지 않게 자리를 조금 준다 */
+.unit-card.stacked {
+  margin-right: 7px;
+}
+
+.stack-count {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  z-index: 2;
+  min-width: 24px;
+  padding: 2px 5px;
+  border-radius: 10px;
+  background: var(--tier-color, var(--accent));
+  color: #0d1014;
+  font-size: 11px;
+  font-weight: 800;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.5);
+}
+
+/* ── 합성 가능 ──────────────────────────────────
+   자동 합성을 끈 이상 이 신호를 놓치면 카드가 그냥 쌓이기만 한다. */
+.unit-card.mergeable {
+  border-color: var(--gold);
+  animation: mergeable-pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes mergeable-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(240, 198, 81, 0);
+  }
+  50% {
+    box-shadow: 0 0 10px 1px rgba(240, 198, 81, 0.55);
+  }
+}
+
+.card-actions .merge {
+  flex: 1;
+  padding: 6px 4px;
+  font-size: 11.5px;
+  font-weight: 800;
+  min-height: 32px;
+  background: var(--gold);
+  border-color: transparent;
+  color: #1a1508;
+}
+
+.card-actions .merge:hover:not(:disabled) {
+  background: #f7d774;
+}
+
+/* 합성 버튼이 붙으면 배치는 보조로 물러난다 */
+.unit-card.mergeable .card-actions .place {
+  flex: 0 0 auto;
+  padding: 6px 7px;
+  background: var(--card);
+  border-color: var(--line);
+  color: var(--text);
+  font-weight: 600;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .unit-card.mergeable {
+    animation: none;
+    box-shadow: 0 0 8px 1px rgba(240, 198, 81, 0.5);
+  }
 }
 
 /* 잠금은 왼쪽 띠(티어)를 덮지 않고 오른쪽에 표시한다 — 티어를 계속 읽을 수 있어야 한다 */

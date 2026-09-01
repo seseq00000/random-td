@@ -212,6 +212,62 @@ describe('Game 자동 합성', () => {
   })
 })
 
+describe('수동 합성 — 종류를 지정한다', () => {
+  it('누른 종류만 합성한다 — 사전순으로 엉뚱한 게 합쳐지면 안 된다', () => {
+    const game = idleGame()
+    // 사전순으로 splash 가 single 보다 앞선다. 지정 없이 합성하면 splash 가 걸린다.
+    for (let i = 0; i < 3; i++) game.grantUnit('t1_splash')
+    for (let i = 0; i < 3; i++) game.grantUnit('t1_single')
+
+    expect(game.mergeManually('t1_single')).toBe(true)
+    // single 만 사라지고 splash 3개는 그대로 남아야 한다
+    expect(game.inv.totalCountOf('t1_splash')).toBe(3)
+    expect(game.inv.totalCountOf('t1_single')).toBe(0)
+  })
+
+  it('canMerge 는 3개가 모였을 때만 참이다', () => {
+    const game = idleGame()
+    expect(game.canMerge('t1_single')).toBe(false)
+    game.grantUnit('t1_single')
+    game.grantUnit('t1_single')
+    expect(game.canMerge('t1_single')).toBe(false)
+    game.grantUnit('t1_single')
+    expect(game.canMerge('t1_single')).toBe(true)
+  })
+
+  it('잠긴 종류는 canMerge 가 거짓이다 — 카드가 밝아지면 안 된다', () => {
+    const game = idleGame()
+    for (let i = 0; i < 3; i++) game.grantUnit('t1_single')
+    expect(game.canMerge('t1_single')).toBe(true)
+    game.toggleLock('t1_single')
+    expect(game.canMerge('t1_single')).toBe(false)
+    expect(game.mergeManually('t1_single')).toBe(false)
+  })
+
+  it('각성 유닛은 합성 대상이 아니다', () => {
+    const game = idleGame()
+    for (let i = 0; i < 3; i++) game.inv.grant('t7_single', true)
+    expect(game.canMerge('t7_single')).toBe(false)
+  })
+
+  it('mergeableDefIds 가 합성 가능한 종류를 전부 준다', () => {
+    const game = idleGame()
+    for (let i = 0; i < 3; i++) game.grantUnit('t1_single')
+    for (let i = 0; i < 3; i++) game.grantUnit('t1_splash')
+    game.grantUnit('t1_sniper')
+
+    const ids = game.mergeableDefIds().sort()
+    expect(ids).toEqual(['t1_single', 't1_splash'])
+  })
+
+  it('없는 종류를 지정하면 아무 일도 없다', () => {
+    const game = idleGame()
+    for (let i = 0; i < 3; i++) game.grantUnit('t1_single')
+    expect(game.mergeManually('t1_splash')).toBe(false)
+    expect(game.inv.totalCountOf('t1_single')).toBe(3)
+  })
+})
+
 describe('T7 각성', () => {
   it('T7 3개는 같은 유닛의 각성이고, DPS 가 2배가 된다', () => {
     const game = idleGame()

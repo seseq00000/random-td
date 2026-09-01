@@ -7,6 +7,7 @@ import { CORE_RADIUS_TILES, SPAWN_RADIUS_TILES } from '../data/field.js'
 import { getUnit } from '../data/units.js'
 import { drawCreature, drawMonster, monsterColor } from './creatures.js'
 import { Effects } from './effects.js'
+import { drawProjectile, projectileStyle } from './projectiles.js'
 
 /**
  * DOM 카드용 역할 표기. 동물의 몸통색과 한 글자를 그대로 쓴다.
@@ -28,8 +29,6 @@ const COLORS = {
   emptySlot: 'rgba(255,255,255,0.10)',
   enemyHpBg: 'rgba(0,0,0,0.6)',
   enemyHp: '#5fd35f',
-  projectile: '#ffe08a',
-  trail: 'rgba(255,224,138,0.35)',
   muzzle: '#fff3c4',
   rangeFill: 'rgba(120,190,255,0.10)',
   rangeStroke: 'rgba(120,190,255,0.55)',
@@ -72,7 +71,8 @@ export class Renderer {
   private prevPos = new Map<number, Vec2>()
   private prevType = new Map<number, EnemyType>()
   private prevCooldown = new Map<number, number>()
-  private prevProjectile = new Map<number, Vec2>()
+  /** 직전 위치 + 역할. 역할은 착탄 파티클 색을 투사체와 맞추는 데 쓴다. */
+  private prevProjectile = new Map<number, { pos: Vec2; role: Role }>()
   private hitFlash = new Map<number, number>()
   private muzzle = new Map<number, number>()
   private shake = 0
@@ -186,11 +186,16 @@ export class Renderer {
       }
     }
 
-    // ── 투사체: 꼬리를 그리려면 직전 위치가 필요하다 ──
+    // ── 투사체: 사라진 = 착탄. 그 자리에 투사체 색으로 파편을 튀긴다 ──
     const projUids = new Set<number>()
     for (const p of game.projectiles) projUids.add(p.uid)
-    for (const uid of [...this.prevProjectile.keys()]) {
-      if (!projUids.has(uid)) this.prevProjectile.delete(uid)
+    for (const [uid, prev] of [...this.prevProjectile]) {
+      if (projUids.has(uid)) continue
+      const style = projectileStyle(prev.role)
+      // 포탄은 광역이라 더 크게 터진다 — 스플래시 반경이 눈에 보여야 한다
+      const heavy = prev.role === 'splash'
+      this.fx.burst(prev.pos.x, prev.pos.y, style.color, heavy ? 12 : 5, heavy ? 130 : 70)
+      this.prevProjectile.delete(uid)
     }
   }
 
@@ -386,26 +391,40 @@ export class Renderer {
 
   private drawProjectiles(game: Game): void {
     const { ctx } = this
+    // 첫 프레임에는 직전 위치가 없다 — 그땐 목표를 향한 방향으로 세운다
+    const enemyPos = new Map(game.enemies.map((e) => [e.uid, game.enemyPos(e)]))
 
     for (const p of game.projectiles) {
+      const role = getUnit(p.sourceDefId).role
+      const style = projectileStyle(role)
       const prev = this.prevProjectile.get(p.uid)
 
-      // 꼬리 — 직전 위치까지 선을 그으면 속도가 눈에 보인다
-      if (prev) {
-        ctx.strokeStyle = COLORS.trail
-        ctx.lineWidth = 3
+      // 꼬리 — 직전 위치까지 선을 그으면 속도가 눈에 보인다.
+      // 색을 투사체와 공유해서 "저 파란 게 저기서 왔다"가 이어진다.
+      if (prev && style.trailWidth > 0) {
+        ctx.save()
+        ctx.globalAlpha = style.trailAlpha
+        ctx.strokeStyle = style.color
+        ctx.lineWidth = style.trailWidth
         ctx.lineCap = 'round'
         ctx.beginPath()
-        ctx.moveTo(prev.x, prev.y)
+        ctx.moveTo(prev.pos.x, prev.pos.y)
         ctx.lineTo(p.x, p.y)
         ctx.stroke()
+        ctx.restore()
       }
-      this.prevProjectile.set(p.uid, { x: p.x, y: p.y })
 
-      ctx.fillStyle = COLORS.projectile
-      ctx.beginPath()
-      ctx.arc(p.x, p.y, 3.5, 0, Math.PI * 2)
-      ctx.fill()
+      const target = enemyPos.get(p.targetUid)
+      const from = prev?.pos
+      const angle =
+        from && (from.x !== p.x || from.y !== p.y)
+          ? Math.atan2(p.y - from.y, p.x - from.x)
+          : target
+            ? Math.atan2(target.y - p.y, target.x - p.x)
+            : 0
+
+      drawProjectile(ctx, role, p.x, p.y, angle)
+      this.prevProjectile.set(p.uid, { pos: { x: p.x, y: p.y }, role })
     }
   }
 }

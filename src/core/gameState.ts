@@ -319,13 +319,33 @@ export class Game {
     }
   }
 
-  /** 수동 합성 1회 — 자동 합성이 꺼져 있을 때 쓴다. 합성했으면 true. */
-  mergeManually(): boolean {
-    return this.mergeOnce()
+  /**
+   * 수동 합성 1회. `defId` 를 주면 **그 종류만** 합성한다.
+   *
+   * 종류를 지정할 수 있어야 하는 이유: 플레이어가 카드를 눌러서 합성하므로,
+   * 누른 것과 다른 종류가 합성되면 조작이 배신당한 것처럼 느껴진다.
+   */
+  mergeManually(defId?: string): boolean {
+    return this.mergeOnce(defId)
   }
 
-  private mergeOnce(): boolean {
-    const candidate = findMerge(this.inv.allUnits(), (id) => this.inv.isLocked(id))
+  /** 그 종류를 지금 합성할 수 있는가 — UI 가 카드를 밝게 표시할 기준 */
+  canMerge(defId: string): boolean {
+    return findMerge(this.inv.allUnits(), (id) => this.inv.isLocked(id), defId) !== null
+  }
+
+  /** 합성 가능한 종류 전부. 하나라도 있으면 "합성하라"는 신호를 띄운다. */
+  mergeableDefIds(): string[] {
+    const counts = this.inv.countsByDef()
+    const out: string[] = []
+    for (const [defId] of counts) {
+      if (this.canMerge(defId)) out.push(defId)
+    }
+    return out
+  }
+
+  private mergeOnce(defId?: string): boolean {
+    const candidate = findMerge(this.inv.allUnits(), (id) => this.inv.isLocked(id), defId)
     if (!candidate) return false
 
     const product = mergeProduct(candidate.defId, this.rng)

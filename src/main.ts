@@ -94,6 +94,14 @@ function startNewGame(): void {
   closeSheet()
   // 이전 판의 uid 가 남아 있으면 엉뚱한 자리에서 파편이 튄다
   renderer.reset()
+  /**
+   * 합성은 **직접 누르는 게 기본**이다.
+   *
+   * core 의 기본값(`autoMerge = true`)은 그대로 뒀다 — 시뮬레이터와 테스트가
+   * "항상 합성하는 플레이어"를 모델로 쓰고 있어서, 그걸 바꾸면 측정된 밸런스가
+   * 통째로 흔들린다. 여기서 UI 기본값만 끈다.
+   */
+  game.setAutoMerge(false)
   running = true
   syncAll()
 }
@@ -426,6 +434,7 @@ function renderBench(): void {
     const locked = game.inv.isLocked(g.defId)
     const dps = Math.round(def.damage * def.attackSpeed * (g.awakened ? 2 : 1))
     const first = g.uids[0]!
+    const mergeable = !g.awakened && game.canMerge(g.defId)
 
     const card = document.createElement('div')
     card.className = 'unit-card'
@@ -434,6 +443,17 @@ function renderBench(): void {
     card.style.setProperty('--role-color', style.color)
     card.classList.toggle('locked', locked)
     card.classList.toggle('awakened', g.awakened)
+    // 중복은 카드가 겹쳐 쌓인 것처럼 보인다 — 몇 장인지 세지 않아도 읽힌다
+    card.classList.toggle('stacked', g.uids.length > 1)
+    // 합성 가능하면 밝게. 자동 합성을 끈 이상 이 신호가 없으면 놓친다.
+    card.classList.toggle('mergeable', mergeable)
+
+    if (g.uids.length > 1) {
+      const stack = document.createElement('span')
+      stack.className = 'stack-count'
+      stack.textContent = `×${g.uids.length}`
+      card.appendChild(stack)
+    }
 
     // 카드 본체를 **탭**하면 상세가 뜬다. 호버가 없는 폰에서 상세를 볼 수 있는 유일한 길이다.
     const pick = document.createElement('button')
@@ -454,6 +474,20 @@ function renderBench(): void {
     const actions = document.createElement('div')
     actions.className = 'card-actions'
 
+    // 합성이 가능하면 그걸 앞세운다 — 지금 눌러야 할 게 그거다.
+    // 그래도 배치는 남긴다. 합칠지 지금 내보낼지는 플레이어가 정할 문제다.
+    if (mergeable) {
+      const merge = document.createElement('button')
+      merge.className = 'merge'
+      merge.textContent = '합성'
+      merge.title = `${def.name} ${MERGE_COUNT}개 → 상위 티어 랜덤 1종 (보유 ${total})`
+      merge.addEventListener('click', () => {
+        if (game.mergeManually(g.defId)) syncAll()
+        else toast('합성할 수 없다')
+      })
+      actions.appendChild(merge)
+    }
+
     const place = document.createElement('button')
     place.className = 'place'
     place.textContent = '배치'
@@ -462,11 +496,12 @@ function renderBench(): void {
     place.addEventListener('click', () => placeUnit(first))
     actions.appendChild(place)
 
-    if (total >= 2 && !g.awakened) {
+    // 합성 버튼이 있으면 개수는 그게 말해준다 — 배지는 아직 못 모았을 때만
+    if (total >= 2 && !g.awakened && !mergeable) {
       const badge = document.createElement('span')
       badge.className = 'badge'
-      badge.textContent = total >= MERGE_COUNT ? `${total}` : `${total}/${MERGE_COUNT}`
-      badge.title = `보유 ${total}개 (필드 + 벤치). ${MERGE_COUNT}개면 합성된다`
+      badge.textContent = `${total}/${MERGE_COUNT}`
+      badge.title = `보유 ${total}개 (필드 + 벤치). ${MERGE_COUNT}개면 합성할 수 있다`
       actions.appendChild(badge)
     }
 

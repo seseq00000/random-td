@@ -41,11 +41,15 @@ function isTower(u: UnitInstance): boolean {
 export function findMerge(
   units: readonly UnitInstance[],
   isLocked: (defId: string) => boolean,
+  onlyDefId?: string,
 ): MergeCandidate | null {
   const groups = new Map<string, UnitInstance[]>()
   for (const u of units) {
     if (u.awakened) continue
     if (isLocked(u.defId)) continue
+    // 수동 합성은 플레이어가 **어떤 카드**를 누른 건지가 중요하다.
+    // 필터가 없으면 사전순으로 엉뚱한 종류가 합성돼서 누른 것과 결과가 어긋난다.
+    if (onlyDefId !== undefined && u.defId !== onlyDefId) continue
     const list = groups.get(u.defId)
     if (list) list.push(u)
     else groups.set(u.defId, [u])

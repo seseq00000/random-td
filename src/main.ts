@@ -414,114 +414,95 @@ function groupBench(): BenchGroup[] {
   })
 }
 
+/**
+ * 벤치 — **8종류가 한 화면에 다 보이는 2행 그리드**.
+ *
+ * 원래는 가로 스크롤 카드였는데, 벤치를 종류 단위로 세면서 8장이 928px 가 됐다.
+ * 폰 화면은 390px 이라 한 번에 3장밖에 안 보였고, 자동 합성을 끈 뒤로는
+ * **"빛나는 카드를 찾아 스크롤"** 해야 해서 합성이 번거로웠다.
+ *
+ * 세로를 더 쓰는 건 공짜다 — 캔버스는 높이가 아니라 **폭**에 묶여 있어서
+ * 아래를 60px 더 써도 게임 화면이 줄지 않는다.
+ *
+ * 타일에는 그림·등급·개수와 **버튼 하나만** 둔다. 이름·DPS·팔기·잠금은
+ * 타일을 탭해서 여는 상세 시트가 맡는다.
+ */
 function renderBench(): void {
   benchEl.replaceChildren()
   const groups = groupBench()
-
-  if (groups.length === 0) {
-    const empty = document.createElement('p')
-    empty.className = 'empty'
-    empty.textContent = '벤치가 비었다 — 뽑기를 눌러라'
-    benchEl.appendChild(empty)
-    return
-  }
-
   const hasSpace = game.hasFreeSlot()
 
   for (const g of groups) {
     const def = getUnit(g.defId)
-    const style = ROLE_STYLE[def.role]
     const total = game.inv.totalCountOf(g.defId)
     const locked = game.inv.isLocked(g.defId)
-    const dps = Math.round(def.damage * def.attackSpeed * (g.awakened ? 2 : 1))
     const first = g.uids[0]!
     const mergeable = !g.awakened && game.canMerge(g.defId)
 
-    const card = document.createElement('div')
-    card.className = 'unit-card'
-    // 왼쪽 띠 = 티어 등급, 글리프 배경 = 동물. 두 축을 분리한다.
-    card.style.setProperty('--tier-color', tierColor(def.tier))
-    card.style.setProperty('--role-color', style.color)
-    card.classList.toggle('locked', locked)
-    card.classList.toggle('awakened', g.awakened)
-    // 중복은 카드가 겹쳐 쌓인 것처럼 보인다 — 몇 장인지 세지 않아도 읽힌다
-    card.classList.toggle('stacked', g.uids.length > 1)
+    const tile = document.createElement('div')
+    tile.className = 'unit-tile'
+    tile.style.setProperty('--tier-color', tierColor(def.tier))
+    tile.classList.toggle('locked', locked)
+    tile.classList.toggle('awakened', g.awakened)
+    // 중복은 타일이 겹쳐 쌓인 것처럼 보인다 — 몇 장인지 세지 않아도 읽힌다
+    tile.classList.toggle('stacked', g.uids.length > 1)
     // 합성 가능하면 밝게. 자동 합성을 끈 이상 이 신호가 없으면 놓친다.
-    card.classList.toggle('mergeable', mergeable)
+    tile.classList.toggle('mergeable', mergeable)
 
     if (g.uids.length > 1) {
       const stack = document.createElement('span')
       stack.className = 'stack-count'
       stack.textContent = `×${g.uids.length}`
-      card.appendChild(stack)
+      tile.appendChild(stack)
+    }
+    if (locked) {
+      const lockMark = document.createElement('span')
+      lockMark.className = 'tile-lock'
+      lockMark.textContent = '🔒'
+      tile.appendChild(lockMark)
     }
 
-    // 카드 본체를 **탭**하면 상세가 뜬다. 호버가 없는 폰에서 상세를 볼 수 있는 유일한 길이다.
-    const pick = document.createElement('button')
-    pick.className = 'pick'
+    // 타일 본체를 탭하면 상세가 뜬다 — 호버가 없는 폰에서 상세를 볼 유일한 길이다
+    const body = document.createElement('button')
+    body.className = 'tile-body'
+    body.title = `${def.name} · ${tierLabel(def.tier)} · 보유 ${total}`
 
-    const name = document.createElement('span')
-    name.className = 'name'
-    name.textContent = `${def.name}${g.awakened ? ' ★' : ''}`
+    const grade = document.createElement('span')
+    grade.className = 'tile-grade'
+    grade.textContent = g.awakened ? '★각성' : tierLabel(def.tier)
+    grade.style.color = tierColor(def.tier)
 
-    const meta = document.createElement('span')
-    meta.className = 'meta'
-    meta.textContent = `${tierLabel(def.tier)} · DPS ${dps}${g.uids.length > 1 ? ` · ×${g.uids.length}` : ''}`
+    body.append(creatureIcon(def.role, def.tier, g.awakened, 34), grade)
+    body.addEventListener('click', () => showSheet('unit', first))
 
-    // 글자(냥/곰/…) 대신 진짜 동물 그림. data URL 캐시라 재렌더 비용이 없다.
-    pick.append(creatureIcon(def.role, def.tier, g.awakened, 30), name, meta)
-    pick.addEventListener('click', () => showSheet('unit', first))
-
-    const actions = document.createElement('div')
-    actions.className = 'card-actions'
-
-    // 합성이 가능하면 그걸 앞세운다 — 지금 눌러야 할 게 그거다.
-    // 그래도 배치는 남긴다. 합칠지 지금 내보낼지는 플레이어가 정할 문제다.
+    // 버튼은 하나만. 지금 눌러야 할 게 무엇인지 타일이 스스로 정한다.
+    const act = document.createElement('button')
     if (mergeable) {
-      const merge = document.createElement('button')
-      merge.className = 'merge'
-      merge.textContent = '합성'
-      merge.title = `${def.name} ${MERGE_COUNT}개 → 상위 티어 랜덤 1종 (보유 ${total})`
-      merge.addEventListener('click', () => {
+      act.className = 'tile-act merge'
+      act.textContent = '합성'
+      act.title = `${def.name} ${MERGE_COUNT}개 → 상위 티어 랜덤 1종 (보유 ${total})`
+      act.addEventListener('click', () => {
         if (game.mergeManually(g.defId)) syncAll()
         else toast('합성할 수 없다')
       })
-      actions.appendChild(merge)
+    } else {
+      act.className = 'tile-act place'
+      act.textContent = total >= 2 ? `배치 ${total}/${MERGE_COUNT}` : '배치'
+      // 비활성화하지 않는다 — 눌렀을 때 "공간이 없다"가 떠야 이유를 안다
+      act.classList.toggle('nospace', !hasSpace)
+      act.addEventListener('click', () => placeUnit(first))
     }
 
-    const place = document.createElement('button')
-    place.className = 'place'
-    place.textContent = '배치'
-    // 비활성화하지 않는다 — 눌렀을 때 "공간이 없다"가 떠야 이유를 안다.
-    place.classList.toggle('nospace', !hasSpace)
-    place.addEventListener('click', () => placeUnit(first))
-    actions.appendChild(place)
+    tile.append(body, act)
+    benchEl.appendChild(tile)
+  }
 
-    // 합성 버튼이 있으면 개수는 그게 말해준다 — 배지는 아직 못 모았을 때만
-    if (total >= 2 && !g.awakened && !mergeable) {
-      const badge = document.createElement('span')
-      badge.className = 'badge'
-      badge.textContent = `${total}/${MERGE_COUNT}`
-      badge.title = `보유 ${total}개 (필드 + 벤치). ${MERGE_COUNT}개면 합성할 수 있다`
-      actions.appendChild(badge)
-    }
-
-    if (!g.awakened) {
-      const lock = document.createElement('button')
-      lock.className = 'mini lock'
-      lock.textContent = locked ? '🔒' : '🔓'
-      lock.title = locked
-        ? '잠김 — 합성되지 않는다. 눌러서 해제'
-        : '잠그면 3개가 쌓여도 합성되지 않는다 (컬렉터 미션용)'
-      lock.addEventListener('click', () => {
-        game.toggleLock(g.defId)
-        syncAll()
-      })
-      actions.appendChild(lock)
-    }
-
-    card.append(pick, actions)
-    benchEl.appendChild(card)
+  // 남은 칸을 점선으로 채운다 — "몇 종류까지 벌릴 수 있나"가 보여야 판단이 된다
+  for (let i = groups.length; i < BENCH_CAPACITY; i++) {
+    const slot = document.createElement('div')
+    slot.className = 'unit-tile empty'
+    if (i === groups.length && groups.length === 0) slot.textContent = '뽑기'
+    benchEl.appendChild(slot)
   }
 }
 
@@ -559,6 +540,40 @@ function renderUnitSheet(): void {
       syncAll()
     },
   })
+
+  if (unit.awakened) return
+
+  // 잠금은 타일에서 뺐다(자리가 없다). 대신 여기서 켜고 끈다 —
+  // 컬렉터 미션을 노릴 때만 쓰는 기능이라 한 단계 안쪽이 맞다.
+  const locked = game.inv.isLocked(unit.defId)
+  const lock = document.createElement('button')
+  lock.className = 'sheet-action'
+  lock.classList.toggle('declared', locked)
+  lock.textContent = locked ? '🔒 합성 잠금 해제' : '🔓 합성 잠그기'
+  lock.title = locked
+    ? '지금은 3개가 쌓여도 합성되지 않는다'
+    : `잠그면 ${MERGE_COUNT}개가 쌓여도 합성되지 않는다 (컬렉터 미션용)`
+  lock.addEventListener('click', () => {
+    game.toggleLock(unit.defId)
+    syncAll()
+  })
+  sheetBody.appendChild(lock)
+
+  const canMergeThis = game.canMerge(unit.defId)
+  if (canMergeThis) {
+    const merge = document.createElement('button')
+    merge.className = 'sheet-action primary'
+    merge.textContent = `합성하기 — ${MERGE_COUNT}개 → 상위 티어`
+    merge.addEventListener('click', () => {
+      if (game.mergeManually(unit.defId)) {
+        closeSheet()
+        syncAll()
+      } else {
+        toast('합성할 수 없다')
+      }
+    })
+    sheetBody.appendChild(merge)
+  }
 }
 
 function renderMissionSheet(): void {

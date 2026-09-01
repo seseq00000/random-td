@@ -188,6 +188,11 @@ const MONSTER_BODY: Record<EnemyType, string> = {
   boss: '#b06ad0',
 }
 
+/** 처치 파티클이 몬스터와 같은 색을 쓰도록 — "저게 터졌다"가 색으로 이어져야 한다 */
+export function monsterColor(type: EnemyType): string {
+  return MONSTER_BODY[type]
+}
+
 export function drawMonster(
   ctx: CanvasRenderingContext2D,
   type: EnemyType,

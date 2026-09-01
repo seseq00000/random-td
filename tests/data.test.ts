@@ -2,6 +2,12 @@ import { describe, expect, it } from 'vitest'
 import { adjustLife, earlyStartBonus, leakPenalty, waveClearReward } from '../src/core/economy.js'
 import type { Enemy } from '../src/core/types.js'
 import {
+  CELEBRATE_FROM_TIER,
+  TIER_STYLES,
+  celebrationText,
+  tierLabel,
+} from '../src/data/tiers.js'
+import {
   ROLE_SPECS,
   TIER_COUNT,
   UNITS,
@@ -24,6 +30,33 @@ import {
   waveBountyPool,
   waveTypes,
 } from '../src/data/waves.js'
+
+describe('등급과 축하 연출', () => {
+  it('축하 기준선은 등급명이 붙기 시작하는 티어와 같다', () => {
+    // T1·T2 는 "T1" 처럼 숫자로 부르고, T3 부터 레어/유니크/… 로 이름이 붙는다.
+    // 두 선이 어긋나면 "이름 없는 흔한 유닛"에 축하가 뜨거나, 그 반대가 된다.
+    const firstNamed = TIER_STYLES.findIndex((s) => !/^T\d+$/.test(s.label)) + 1
+    expect(CELEBRATE_FROM_TIER).toBe(firstNamed)
+  })
+
+  it('기준선 아래는 숫자 표기, 위는 등급명이다', () => {
+    expect(tierLabel(CELEBRATE_FROM_TIER - 1)).toMatch(/^T\d+$/)
+    expect(tierLabel(CELEBRATE_FROM_TIER)).not.toMatch(/^T\d+$/)
+  })
+
+  it('축하 문구는 티어가 올라갈수록 약해지지 않는다', () => {
+    // 길이(느낌표 수)로 세기를 표현한다 — 위 등급이 더 밋밋하면 연출이 거꾸로 읽힌다
+    for (let t = CELEBRATE_FROM_TIER; t < TIER_STYLES.length; t++) {
+      expect(celebrationText(t + 1).length).toBeGreaterThanOrEqual(celebrationText(t).length)
+    }
+  })
+
+  it('모든 등급에 축하 문구가 있다', () => {
+    for (let t = CELEBRATE_FROM_TIER; t <= TIER_STYLES.length; t++) {
+      expect(celebrationText(t)).toContain(tierLabel(t))
+    }
+  })
+})
 
 function mkEnemy(type: Enemy['type']): Enemy {
   return {

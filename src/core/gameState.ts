@@ -154,11 +154,25 @@ export class Game {
   // ── 명령: 뽑기 ──────────────────────────────────────────
 
   /**
-   * 뽑기 1회. 준비 페이즈에만 가능하다.
-   * 벤치 만차면 거부한다 — 판매나 합성으로 비워야 뽑을 수 있다는 게 압박의 일부다.
+   * 운영이 가능한 상태인가 — 뽑기·슬롯 구매·배치가 여기에 걸린다.
+   *
+   * 원래는 **준비 페이즈 전용**이었다. "준비 = 결정, 전투 = 관전"이라는 리듬을 만들려던
+   * 것인데, 실제로 해보니 전투가 30~60초씩 이어지는 동안 아무것도 못 해서 답답했다.
+   * 지금은 판이 끝나지 않았으면 언제든 된다.
+   *
+   * **도전 선언은 여전히 준비 페이즈 전용이다.** 웨이브 구성이 전투 시작 시점에
+   * 확정되므로, 전투 중에 거는 건 애초에 성립하지 않는다.
+   */
+  canOperate(): boolean {
+    return this.over === 'none'
+  }
+
+  /**
+   * 뽑기 1회. 벤치 만차면 거부한다 —
+   * 판매나 합성으로 비워야 뽑을 수 있다는 게 압박의 일부다.
    */
   draw(): DrawResult {
-    if (this.phase !== 'prep') return { ok: false, reason: 'wrong-phase' }
+    if (!this.canOperate()) return { ok: false, reason: 'wrong-phase' }
     if (this.gold < GACHA_COST) return { ok: false, reason: 'insufficient-gold' }
     if (this.inv.benchFull()) return { ok: false, reason: 'bench-full' }
 
@@ -205,7 +219,7 @@ export class Game {
   // ── 명령: 슬롯 ──────────────────────────────────────────
 
   buySlot(): BuySlotResult {
-    if (this.phase !== 'prep') return { ok: false, reason: 'insufficient-gold' }
+    if (!this.canOperate()) return { ok: false, reason: 'insufficient-gold' }
     const result = this.inv.buySlot(this.gold)
     if (result.ok) {
       this.gold -= result.cost

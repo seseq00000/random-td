@@ -135,10 +135,18 @@ describe('Game.draw — 뽑기 명령', () => {
     expect(game.gold).toBe(goldBefore)
   })
 
-  it('전투 중에는 뽑을 수 없다', () => {
+  it('전투 중에도 뽑을 수 있다 — 관전만 하는 시간이 없어야 한다', () => {
     const game = new Game(1)
     game.gold = 1000
     game.startWaveEarly()
+    expect(game.phase).toBe('battle')
+    expect(game.draw().ok).toBe(true)
+  })
+
+  it('판이 끝나면 뽑을 수 없다', () => {
+    const game = new Game(1)
+    game.gold = 1000
+    game.over = 'defeat'
     expect(game.draw()).toEqual({ ok: false, reason: 'wrong-phase' })
   })
 

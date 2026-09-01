@@ -2,6 +2,7 @@ import { CREATURES } from '../data/creatures.js'
 import { tierColor, tierLabel } from '../data/tiers.js'
 import { TIER_COUNT, unitsOfTier } from '../data/units.js'
 import { drawCreature } from '../render/creatures.js'
+import { creatureIcon } from './creatureIcon.js'
 
 /**
  * 도감 + 역할 범례.
@@ -50,10 +51,9 @@ export function renderCodex(target: HTMLElement, state: CodexState): void {
     const item = document.createElement('div')
     item.className = 'legend-item'
 
-    const chip = document.createElement('span')
-    chip.className = 'legend-glyph'
-    chip.style.background = c.body
-    chip.textContent = c.glyph
+    // 범례도 글자가 아니라 실제 동물로 — "이 실루엣이 이 역할"이 그림으로 이어져야 한다
+    const chip = creatureIcon(c.role, 3, false, 26)
+    chip.classList.add('legend-glyph')
 
     const text = document.createElement('span')
     text.className = 'legend-text'

@@ -16,13 +16,16 @@ import {
 import { CHALLENGE_BOSS, FEVER, TOKEN_MAX, challengeBossGold } from './data/challenge.js'
 import type { ChallengeKind } from './data/challenge.js'
 import { sellValue } from './data/slots.js'
-import { tierColor, tierLabel } from './data/tiers.js'
+import { CELEBRATE_FROM_TIER, tierColor, tierLabel } from './data/tiers.js'
 import { getUnit } from './data/units.js'
 import { TYPE_MODIFIERS } from './data/waves.js'
 import { ROLE_STYLE, Renderer } from './render/renderer.js'
 import { createRecordStore } from './storage/recordStore.js'
+import { celebrate } from './ui/celebrate.js'
 import { renderCodex } from './ui/codex.js'
+import { creatureIcon } from './ui/creatureIcon.js'
 import { renderInspector } from './ui/inspector.js'
+import { renderOdds } from './ui/odds.js'
 
 const $ = <T extends HTMLElement>(sel: string): T => document.querySelector<T>(sel)!
 
@@ -30,6 +33,7 @@ const canvas = $<HTMLCanvasElement>('#game')
 const benchEl = $<HTMLDivElement>('#bench')
 const previewEl = $<HTMLDivElement>('#wave-preview')
 const toastEl = $<HTMLDivElement>('#toast')
+const celebrateEl = $<HTMLDivElement>('#celebrate')
 const startBtn = $<HTMLButtonElement>('#btn-start')
 const drawBtn = $<HTMLButtonElement>('#btn-draw')
 
@@ -88,6 +92,8 @@ function startNewGame(): void {
   lastLogLength = 0
   lastSignature = ''
   closeSheet()
+  // 이전 판의 uid 가 남아 있으면 엉뚱한 자리에서 파편이 튄다
+  renderer.reset()
   running = true
   syncAll()
 }
@@ -116,7 +122,7 @@ const SHEET_TITLE: Record<SheetId, string> = {
   missions: '미션',
   challenge: '도전',
   field: '필드',
-  codex: '도감',
+  codex: '뽑기 확률 · 도감',
   log: '기록',
   unit: '유닛 상세',
 }
@@ -330,7 +336,12 @@ function renderRanking(target: HTMLElement, highlightId: string | null): void {
 
 drawBtn.addEventListener('click', () => {
   const result = game.draw()
-  if (!result.ok) toast(drawErrorText(result.reason))
+  if (!result.ok) {
+    toast(drawErrorText(result.reason))
+  } else if (getUnit(result.defId).tier >= CELEBRATE_FROM_TIER) {
+    // 등급명이 붙는 티어부터만 축하한다 — T1·T2 까지 띄우면 특별함이 사라진다
+    celebrate(celebrateEl, result.defId)
+  }
   syncAll()
 })
 
@@ -427,11 +438,17 @@ function renderBench(): void {
     // 카드 본체를 **탭**하면 상세가 뜬다. 호버가 없는 폰에서 상세를 볼 수 있는 유일한 길이다.
     const pick = document.createElement('button')
     pick.className = 'pick'
-    pick.innerHTML = `
-      <span class="glyph">${style.glyph}</span>
-      <span class="name">${def.name}${g.awakened ? ' ★' : ''}</span>
-      <span class="meta">${tierLabel(def.tier)} · DPS ${dps}${g.uids.length > 1 ? ` · ×${g.uids.length}` : ''}</span>
-    `
+
+    const name = document.createElement('span')
+    name.className = 'name'
+    name.textContent = `${def.name}${g.awakened ? ' ★' : ''}`
+
+    const meta = document.createElement('span')
+    meta.className = 'meta'
+    meta.textContent = `${tierLabel(def.tier)} · DPS ${dps}${g.uids.length > 1 ? ` · ×${g.uids.length}` : ''}`
+
+    // 글자(냥/곰/…) 대신 진짜 동물 그림. data URL 캐시라 재렌더 비용이 없다.
+    pick.append(creatureIcon(def.role, def.tier, g.awakened, 30), name, meta)
     pick.addEventListener('click', () => showSheet('unit', first))
 
     const actions = document.createElement('div')
@@ -656,7 +673,7 @@ function challengeButton(kind: ChallengeKind, inPrep: boolean): HTMLButtonElemen
 
 /** 필드 시트 — 슬롯 구매와 배치된 타워 관리. 캔버스를 탭할 필요가 없어야 한다. */
 function renderFieldSheet(): void {
-  const inPrep = game.phase === 'prep' && game.over === 'none'
+  const canBuy = game.canOperate()
   const gold = Math.floor(game.gold)
 
   const summary = document.createElement('div')
@@ -672,7 +689,7 @@ function renderFieldSheet(): void {
     buy.disabled = true
   } else {
     buy.textContent = `슬롯 구매 — ${cost}골드`
-    buy.disabled = !inPrep || gold < cost
+    buy.disabled = !canBuy || gold < cost
     buy.addEventListener('click', () => {
       const result = game.buySlot()
       if (!result.ok) toast(result.reason === 'max-slots' ? '슬롯은 최대다' : '골드가 부족하다')
@@ -710,11 +727,16 @@ function renderFieldSheet(): void {
 
     const info = document.createElement('button')
     info.className = 'field-info'
-    info.innerHTML = `
-      <span class="glyph">${style.glyph}</span>
-      <span class="name">${def.name}${t.awakened ? ' ★' : ''}</span>
-      <span class="meta">${tierLabel(def.tier)} · 사거리 ${def.range}</span>
-    `
+
+    const name = document.createElement('span')
+    name.className = 'name'
+    name.textContent = `${def.name}${t.awakened ? ' ★' : ''}`
+
+    const meta = document.createElement('span')
+    meta.className = 'meta'
+    meta.textContent = `${tierLabel(def.tier)} · 사거리 ${def.range}`
+
+    info.append(creatureIcon(def.role, def.tier, t.awakened, 30), name, meta)
     info.addEventListener('click', () => showSheet('unit', t.uid))
 
     const recall = document.createElement('button')
@@ -739,6 +761,17 @@ function renderFieldSheet(): void {
 }
 
 function renderCodexSheet(): void {
+  // 확률표를 도감 앞에 둔다 — "무엇이 있나"보다 "무엇이 나올 확률인가"가
+  // 뽑기 버튼을 누르기 직전에 필요한 정보다.
+  const odds = document.createElement('div')
+  odds.className = 'odds'
+  renderOdds(odds, game.wave)
+  sheetBody.appendChild(odds)
+
+  const divider = document.createElement('div')
+  divider.className = 'sheet-divider'
+  sheetBody.appendChild(divider)
+
   const held = new Map<string, number>()
   for (const u of game.inv.allUnits()) held.set(u.defId, (held.get(u.defId) ?? 0) + 1)
   // 지금 보유한 것도 즉시 발견 처리한다 — 판이 끝나기 전에 도감을 열어봐도 맞게 보인다
@@ -839,7 +872,8 @@ function updateHud(): void {
 
   startBtn.disabled = !inPrep
   startBtn.classList.toggle('ready', inPrep)
-  drawBtn.disabled = !inPrep || gold < GACHA_COST || game.inv.benchFull()
+  // 뽑기는 전투 중에도 된다 — 준비 페이즈 전용이던 제한을 풀었다
+  drawBtn.disabled = !game.canOperate() || gold < GACHA_COST || game.inv.benchFull()
 
   // 탭 배지 — 시트를 열지 않고도 "볼 게 있다"가 보여야 한다
   const activeMissions = game.missionProgress().filter((r) => !r.done && r.have > 0).length
@@ -886,7 +920,8 @@ function frame(now: number): void {
     accumulator = 0
   }
 
-  renderer.draw(game, { selectedTowerUid })
+  // 이펙트는 실제 경과 시간으로 돌린다 — 시뮬은 고정 스텝이지만 연출은 그럴 이유가 없다
+  renderer.draw(game, { selectedTowerUid }, elapsed)
 
   // 시뮬 진행이 패널 내용을 바꾸는 지점들(웨이브 전환, 미션 달성, 토큰 충전)을
   // 서명 하나로 감지한다. 매 프레임 DOM 을 다시 그리지 않기 위한 것이다.

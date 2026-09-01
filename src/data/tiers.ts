@@ -50,3 +50,21 @@ export function tierColor(tier: number): string {
 
 /** 각성(T7 3개 합성) 광채 */
 export const AWAKEN_GLOW = '#ffe9a0'
+
+/**
+ * 이 티어부터 뽑기 축하 연출을 띄운다.
+ *
+ * **등급명이 붙기 시작하는 지점과 같아야 한다.** T1·T2 는 숫자로 부르는 흔한 유닛이라
+ * 여기에 연출을 붙이면 초반 내내 팝업이 떠서 "레어를 뽑았다"가 안 특별해진다.
+ * 등급명(레어/유니크/…)과 축하는 같은 선을 공유해야 한다.
+ */
+export const CELEBRATE_FROM_TIER = 3
+
+/** 축하 문구 — 위로 갈수록 세진다 */
+export function celebrationText(tier: number): string {
+  if (tier >= 7) return '신화 등장!!!'
+  if (tier >= 6) return '레전드 등장!!'
+  if (tier >= 5) return '에픽 등장!!'
+  if (tier >= 4) return '유니크 등장!'
+  return '레어 등장!'
+}

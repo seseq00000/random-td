@@ -1,16 +1,17 @@
 import { CORE_FLASH_DURATION, type Game } from '../core/gameState.js'
 import { CENTER_PX, FIELD_H, FIELD_W, TILE, tileToPixel, tilesToPixels } from '../core/grid.js'
 import { orbitPosition, spawnAngle } from '../core/orbit.js'
-import type { EnemyType, Role } from '../core/types.js'
+import type { EnemyType, Role, Vec2 } from '../core/types.js'
 import { CREATURES } from '../data/creatures.js'
 import { CORE_RADIUS_TILES, SPAWN_RADIUS_TILES } from '../data/field.js'
 import { getUnit } from '../data/units.js'
-import { drawCreature, drawMonster } from './creatures.js'
+import { drawCreature, drawMonster, monsterColor } from './creatures.js'
+import { Effects } from './effects.js'
 
 /**
- * DOM 카드용 역할 표기. 동물의 몸통색과 한 글자를 그대로 쓴다 —
- * 카드마다 캔버스를 심지 않고도 `냥/곰/빼/늘/도/멍` 으로 동물이 읽힌다.
- * (도감은 열 때 한 번만 그리므로 거기선 진짜 동물을 그린다.)
+ * DOM 카드용 역할 표기. 동물의 몸통색과 한 글자를 그대로 쓴다.
+ * (카드 아이콘은 `ui/creatureIcon.ts` 가 진짜 동물 그림으로 대체했지만,
+ *  몸통색은 카드 테두리·글리프 배경으로 여전히 쓰인다.)
  */
 const ROLE_STYLE: Record<Role, { color: string; glyph: string }> = Object.fromEntries(
   CREATURES.map((c) => [c.role, { color: c.body, glyph: c.glyph }]),
@@ -28,6 +29,8 @@ const COLORS = {
   enemyHpBg: 'rgba(0,0,0,0.6)',
   enemyHp: '#5fd35f',
   projectile: '#ffe08a',
+  trail: 'rgba(255,224,138,0.35)',
+  muzzle: '#fff3c4',
   rangeFill: 'rgba(120,190,255,0.10)',
   rangeStroke: 'rgba(120,190,255,0.55)',
 }
@@ -36,8 +39,8 @@ const COLORS = {
  * 적 타입별 크기. 색과 형태는 `render/creatures.ts` 가 그린다.
  * 크기만으로도 "물량이 왔다"가 읽혀야 한다.
  *
- * 캔버스가 600px 인데 폰에서는 ~380px 로 축소돼 표시된다 — 실제 화면 크기는 여기 값의
- * 0.63배다. 그래서 원안(9/11/6/16)보다 25% 키웠다. 폰에서 안 보이면 없는 것과 같다.
+ * 캔버스가 600px 인데 폰에서는 ~390px 로 축소돼 표시된다 — 실제 화면 크기는 여기 값의
+ * 0.65배다. 그래서 원안(9/11/6/16)보다 25% 키웠다. 폰에서 안 보이면 없는 것과 같다.
  */
 const ENEMY_RADIUS: Record<EnemyType, number> = {
   normal: 11,
@@ -49,12 +52,31 @@ const ENEMY_RADIUS: Record<EnemyType, number> = {
 /** 타워 실루엣 지름(px). 타일이 40px 이라 34 면 거의 꽉 찬다. */
 const TOWER_SIZE = 34
 
+/** 피격 흰 섬광이 남는 시간(초) */
+const HIT_FLASH = 0.11
+/** 발사 섬광이 남는 시간(초) */
+const MUZZLE_FLASH = 0.08
+/** 코어 피격 시 화면 흔들림이 가라앉는 시간(초) */
+const SHAKE_DECAY = 0.36
+
 export interface RenderHints {
   selectedTowerUid: number | null
 }
 
 export class Renderer {
   private readonly ctx: CanvasRenderingContext2D
+  private readonly fx = new Effects()
+
+  // 프레임 간 차이를 관찰해 이펙트를 만든다 — core 를 건드리지 않기 위한 방식이다.
+  private prevHp = new Map<number, number>()
+  private prevPos = new Map<number, Vec2>()
+  private prevType = new Map<number, EnemyType>()
+  private prevCooldown = new Map<number, number>()
+  private prevProjectile = new Map<number, Vec2>()
+  private hitFlash = new Map<number, number>()
+  private muzzle = new Map<number, number>()
+  private shake = 0
+  private prevCoreFlash = 0
 
   constructor(canvas: HTMLCanvasElement) {
     const ctx = canvas.getContext('2d')
@@ -64,17 +86,115 @@ export class Renderer {
     canvas.height = FIELD_H
   }
 
-  draw(game: Game, hints: RenderHints): void {
+  /** 새 판을 시작할 때. 이전 판의 uid 가 남아 있으면 엉뚱한 곳에서 파편이 튄다. */
+  reset(): void {
+    this.prevHp.clear()
+    this.prevPos.clear()
+    this.prevType.clear()
+    this.prevCooldown.clear()
+    this.prevProjectile.clear()
+    this.hitFlash.clear()
+    this.muzzle.clear()
+    this.fx.clear()
+    this.shake = 0
+    this.prevCoreFlash = 0
+  }
+
+  draw(game: Game, hints: RenderHints, dt: number): void {
+    this.observe(game, dt)
+    this.fx.update(dt)
+
     const { ctx } = this
     ctx.clearRect(0, 0, FIELD_W, FIELD_H)
+
+    ctx.save()
+    if (this.shake > 0) {
+      // 흔들림은 화면 전체에 걸어야 "맞았다"가 몸으로 읽힌다
+      const mag = this.shake * 7
+      ctx.translate((Math.random() - 0.5) * mag, (Math.random() - 0.5) * mag)
+    }
+
     this.drawField()
     this.drawSpawnPortal()
     this.drawSlots(game)
     this.drawCore(game)
     this.drawTowers(game, hints)
-    this.drawEnemies(game)
     this.drawProjectiles(game)
+    this.drawEnemies(game)
+    this.fx.draw(ctx)
+
+    ctx.restore()
   }
+
+  // ── 관찰: 프레임 간 차이로 이펙트를 만든다 ─────────────────
+
+  private observe(game: Game, dt: number): void {
+    decay(this.hitFlash, dt)
+    decay(this.muzzle, dt)
+    if (this.shake > 0) this.shake = Math.max(0, this.shake - dt / SHAKE_DECAY)
+
+    // 코어 피격의 상승 엣지에서만 흔든다 (매 프레임 걸면 계속 떨린다)
+    if (game.coreFlash > this.prevCoreFlash) {
+      this.shake = 1
+      this.fx.coreBreach(CENTER_PX.x, CENTER_PX.y)
+    }
+    this.prevCoreFlash = game.coreFlash
+
+    // ── 적: 피격 / 처치 ──
+    const live = new Set<number>()
+    for (const e of game.enemies) {
+      live.add(e.uid)
+      const pos = game.enemyPos(e)
+      const before = this.prevHp.get(e.uid)
+
+      if (before !== undefined && e.hp < before) {
+        this.hitFlash.set(e.uid, HIT_FLASH)
+        this.fx.spark(pos.x, pos.y)
+      }
+      this.prevHp.set(e.uid, e.hp)
+      this.prevPos.set(e.uid, pos)
+      this.prevType.set(e.uid, e.type)
+    }
+
+    for (const uid of [...this.prevHp.keys()]) {
+      if (live.has(uid)) continue
+      const pos = this.prevPos.get(uid)
+      const type = this.prevType.get(uid)
+      if (pos && type) {
+        const big = type === 'boss'
+        this.fx.burst(pos.x, pos.y, monsterColor(type), big ? 18 : 9, big ? 165 : 110)
+      }
+      this.prevHp.delete(uid)
+      this.prevPos.delete(uid)
+      this.prevType.delete(uid)
+      this.hitFlash.delete(uid)
+    }
+
+    // ── 타워: 발사 순간 ──
+    const towerUids = new Set<number>()
+    for (const t of game.towers) {
+      towerUids.add(t.uid)
+      const before = this.prevCooldown.get(t.uid)
+      // 쿨다운이 올라갔다 = 방금 쐈다
+      if (before !== undefined && t.cooldown > before) this.muzzle.set(t.uid, MUZZLE_FLASH)
+      this.prevCooldown.set(t.uid, t.cooldown)
+    }
+    for (const uid of [...this.prevCooldown.keys()]) {
+      if (!towerUids.has(uid)) {
+        this.prevCooldown.delete(uid)
+        this.muzzle.delete(uid)
+      }
+    }
+
+    // ── 투사체: 꼬리를 그리려면 직전 위치가 필요하다 ──
+    const projUids = new Set<number>()
+    for (const p of game.projectiles) projUids.add(p.uid)
+    for (const uid of [...this.prevProjectile.keys()]) {
+      if (!projUids.has(uid)) this.prevProjectile.delete(uid)
+    }
+  }
+
+  // ── 필드 ───────────────────────────────────────────────
 
   /**
    * 배경과 동심원 가이드.
@@ -96,7 +216,8 @@ export class Renderer {
     bg.addColorStop(0, COLORS.bgInner)
     bg.addColorStop(1, COLORS.bgOuter)
     ctx.fillStyle = bg
-    ctx.fillRect(0, 0, FIELD_W, FIELD_H)
+    // 흔들림으로 가장자리가 비지 않게 넉넉히 칠한다
+    ctx.fillRect(-20, -20, FIELD_W + 40, FIELD_H + 40)
 
     ctx.lineWidth = 1
     for (let r = 1; r <= SPAWN_RADIUS_TILES; r++) {
@@ -118,7 +239,6 @@ export class Renderer {
     ctx.save()
     ctx.translate(p.x, p.y)
 
-    // 바깥 후광
     const glow = ctx.createRadialGradient(0, 0, 0, 0, 0, 22)
     glow.addColorStop(0, 'rgba(226,120,120,0.35)')
     glow.addColorStop(1, 'rgba(226,120,120,0)')
@@ -190,8 +310,17 @@ export class Renderer {
 
       if (selected) this.drawRange(cx, cy, def.range)
 
+      // 발사 섬광 — 실루엣 뒤에 깔아야 동물이 가려지지 않는다
+      const flash = this.muzzle.get(tower.uid)
+      if (flash) {
+        const a = flash / MUZZLE_FLASH
+        ctx.beginPath()
+        ctx.arc(cx, cy, TOWER_SIZE * (0.55 + (1 - a) * 0.35), 0, Math.PI * 2)
+        ctx.fillStyle = `rgba(255,243,196,${0.45 * a})`
+        ctx.fill()
+      }
+
       // 역할 = 동물 실루엣 / 동물 = 몸통색 / 티어 = 테두리 등급.
-      // 세 축이 겹치지 않아 40px 에서도 셋 다 읽힌다.
       drawCreature(ctx, def.role, cx, cy, TOWER_SIZE, def.tier, {
         ...(selected ? { ringColor: '#ffffff' } : {}),
         awakened: tower.awakened,
@@ -233,6 +362,19 @@ export class Renderer {
         slowed: e.slowRemaining > 0,
       })
 
+      // 피격 섬광 — 몬스터 위에 흰 막을 덮는다. 짧아야 "맞았다"로 읽히고,
+      // 길면 색이 날아가서 무슨 타입인지 안 보인다.
+      const flash = this.hitFlash.get(e.uid)
+      if (flash) {
+        ctx.save()
+        ctx.globalAlpha = (flash / HIT_FLASH) * 0.75
+        ctx.fillStyle = '#ffffff'
+        ctx.beginPath()
+        ctx.arc(p.x, p.y, r * 0.98, 0, Math.PI * 2)
+        ctx.fill()
+        ctx.restore()
+      }
+
       const w = r * 2.5
       const ratio = Math.max(0, e.hp / e.maxHp)
       ctx.fillStyle = COLORS.enemyHpBg
@@ -244,12 +386,36 @@ export class Renderer {
 
   private drawProjectiles(game: Game): void {
     const { ctx } = this
-    ctx.fillStyle = COLORS.projectile
+
     for (const p of game.projectiles) {
+      const prev = this.prevProjectile.get(p.uid)
+
+      // 꼬리 — 직전 위치까지 선을 그으면 속도가 눈에 보인다
+      if (prev) {
+        ctx.strokeStyle = COLORS.trail
+        ctx.lineWidth = 3
+        ctx.lineCap = 'round'
+        ctx.beginPath()
+        ctx.moveTo(prev.x, prev.y)
+        ctx.lineTo(p.x, p.y)
+        ctx.stroke()
+      }
+      this.prevProjectile.set(p.uid, { x: p.x, y: p.y })
+
+      ctx.fillStyle = COLORS.projectile
       ctx.beginPath()
       ctx.arc(p.x, p.y, 3.5, 0, Math.PI * 2)
       ctx.fill()
     }
+  }
+}
+
+/** 남은 시간이 있는 맵을 dt 만큼 줄이고, 다 된 항목은 지운다 */
+function decay(map: Map<number, number>, dt: number): void {
+  for (const [k, v] of map) {
+    const next = v - dt
+    if (next <= 0) map.delete(k)
+    else map.set(k, next)
   }
 }
 

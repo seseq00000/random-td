@@ -83,10 +83,19 @@ describe('슬롯 구매', () => {
     expect(before - game.gold).toBe(TOTAL_SLOT_COST)
   })
 
-  it('전투 중에는 살 수 없다', () => {
+  it('전투 중에도 살 수 있다 — 관전만 하는 시간이 없어야 한다', () => {
     const game = idleGame()
     game.gold = 10_000
     game.startWaveEarly()
+    expect(game.phase).toBe('battle')
+    expect(game.buySlot().ok).toBe(true)
+    expect(game.slotsOwned).toBe(START_SLOTS + 1)
+  })
+
+  it('판이 끝나면 살 수 없다', () => {
+    const game = idleGame()
+    game.gold = 10_000
+    game.over = 'defeat'
     expect(game.buySlot().ok).toBe(false)
     expect(game.slotsOwned).toBe(START_SLOTS)
   })

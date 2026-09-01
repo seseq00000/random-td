@@ -95,26 +95,47 @@ describe('필드 ↔ 벤치 이동', () => {
     expect(game.towers[0]).toMatchObject(SLOT_POSITIONS[0]!)
   })
 
-  it('벤치가 가득 차면 회수할 수 없다', () => {
-    // 자동 합성을 끄고 정원 규칙만 격리해서 본다 —
-    // 켜져 있으면 같은 유닛 8개가 즉시 합성되어 벤치가 저절로 비워진다.
+  it('벤치가 종류로 가득 차면 회수할 수 없다', () => {
+    // 벤치는 **종류**로 센다. 정원 규칙을 보려면 서로 다른 종류로 채워야 한다.
+    // 자동 합성은 끈다 — 켜져 있으면 3개째마다 합성돼 종류가 저절로 줄어든다.
     const game = new Game(1)
     game.autoMerge = false
-    for (let i = 0; i < BENCH_CAPACITY; i++) game.grantUnit('t1_single')
-    expect(game.bench.length).toBe(BENCH_CAPACITY)
-    // 벤치 하나를 필드로 뺀 뒤 벤치를 다시 채운다
-    const uid = game.bench[0]!.uid
-    game.placeFromBench(uid)
-    game.grantUnit('t1_splash')
-    expect(game.bench.length).toBe(BENCH_CAPACITY)
-    expect(game.returnToBench(uid)).toBe(false)
+    const kinds = [...unitsOfTier(1), ...unitsOfTier(2)].slice(0, BENCH_CAPACITY)
+    for (const def of kinds) game.grantUnit(def.id)
+    expect(game.inv.benchStacks()).toBe(BENCH_CAPACITY)
+
+    // 한 종류를 통째로 필드로 뺀 뒤, 그 자리를 다른 종류로 메운다
+    const moved = game.bench.find((b) => b.defId === kinds[0]!.id)!
+    game.placeFromBench(moved.uid)
+    const filler = unitsOfTier(2).find((d) => !kinds.some((k) => k.id === d.id))!
+    game.grantUnit(filler.id)
+    expect(game.inv.benchFull()).toBe(true)
+
+    expect(game.returnToBench(moved.uid)).toBe(false)
   })
 
-  it('벤치 정원을 넘겨 지급되지 않는다', () => {
+  it('회수는 이미 그 종류가 벤치에 있으면 정원과 무관하게 된다', () => {
     const game = new Game(1)
-    game.autoMerge = false // 켜져 있으면 3개째마다 합성돼 정원에 닿지 않는다
-    for (let i = 0; i < BENCH_CAPACITY; i++) expect(game.grantUnit('t1_single')).not.toBeNull()
-    expect(game.grantUnit('t1_single')).toBeNull()
+    game.autoMerge = false
+    const kinds = [...unitsOfTier(1), ...unitsOfTier(2)].slice(0, BENCH_CAPACITY)
+    for (const def of kinds) game.grantUnit(def.id)
+    // 같은 종류를 하나 더 받아 두 장짜리 스택을 만들고, 그중 하나를 필드로 뺀다
+    game.grantUnit(kinds[0]!.id)
+    const moved = game.bench.find((b) => b.defId === kinds[0]!.id)!
+    game.placeFromBench(moved.uid)
+    expect(game.inv.benchFull()).toBe(true)
+
+    // 돌아갈 스택이 그대로 있으므로 칸을 새로 쓰지 않는다
+    expect(game.returnToBench(moved.uid)).toBe(true)
+  })
+
+  it('벤치 정원(종류)을 넘겨 지급되지 않는다', () => {
+    const game = new Game(1)
+    game.autoMerge = false
+    const kinds = [...unitsOfTier(1), ...unitsOfTier(2)].slice(0, BENCH_CAPACITY)
+    for (const def of kinds) expect(game.grantUnit(def.id)).not.toBeNull()
+    const extra = unitsOfTier(2).find((d) => !kinds.some((k) => k.id === d.id))!
+    expect(game.grantUnit(extra.id)).toBeNull()
   })
 })
 

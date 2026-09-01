@@ -41,9 +41,21 @@
         시트에 넣으면 매번 두 번 탭해야 한다.
       -->
       <header id="topbar">
-        <span class="hud-stat life">❤ <b id="stat-life">20</b></span>
-        <span class="hud-stat gold">◈ <b id="stat-gold">60</b></span>
-        <span class="hud-stat wave">W<b id="stat-wave">1</b></span>
+        <!--
+          아이콘은 이모지가 아니라 CSS 로 그린다. 이모지는 기기마다 모양이 달라
+          "이게 뭘 뜻하는지" 가 안 읽혔다. 하트는 텍스트 글리프(♥)라 어디서나 같다.
+        -->
+        <span class="hud-stat life">
+          <span class="ico ico-life">♥</span>
+          <span class="hud-val"><b id="stat-life">20</b><em>라이프</em></span>
+        </span>
+        <span class="hud-stat gold">
+          <span class="ico ico-gold"></span>
+          <span class="hud-val"><b id="stat-gold">60</b><em>골드</em></span>
+        </span>
+        <span class="hud-stat wave">
+          <span class="hud-val"><b id="stat-wave">1</b><em>웨이브</em></span>
+        </span>
         <button id="btn-start" class="phase-chip">준비</button>
       </header>
 

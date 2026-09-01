@@ -5,6 +5,7 @@ import { BENCH_CAPACITY, Inventory } from '../src/core/inventory.js'
 import { SLOT_POSITIONS } from '../src/data/field.js'
 import { SLOT_PRICES, TOTAL_SLOT_COST, nextSlotPrice, sellValue } from '../src/data/slots.js'
 import { GACHA_COST } from '../src/data/gachaTable.js'
+import { unitsOfTier } from '../src/data/units.js'
 
 /** 자동 합성을 끈 게임 — 슬롯/벤치 규칙만 격리해서 본다 */
 function idleGame(seed = 1): Game {
@@ -208,13 +209,29 @@ describe('Inventory 집계', () => {
     expect(inv.totalCountOf('t7_single')).toBe(2)
   })
 
-  it('벤치 정원과 여유 칸이 맞는다', () => {
+  it('벤치 정원과 여유 칸은 종류로 센다', () => {
     const inv = new Inventory()
     expect(inv.benchFree()).toBe(BENCH_CAPACITY)
-    for (let i = 0; i < BENCH_CAPACITY; i++) expect(inv.grant('t1_single')).not.toBeNull()
+
+    const kinds = [...unitsOfTier(1), ...unitsOfTier(2)].slice(0, BENCH_CAPACITY)
+    for (const def of kinds) expect(inv.grant(def.id)).not.toBeNull()
     expect(inv.benchFull()).toBe(true)
     expect(inv.benchFree()).toBe(0)
-    expect(inv.grant('t1_single')).toBeNull()
+    expect(inv.benchStacks()).toBe(BENCH_CAPACITY)
+
+    // 새 종류는 거부, 이미 있는 종류는 계속 받는다
+    const extra = unitsOfTier(2).find((d) => !kinds.some((k) => k.id === d.id))!
+    expect(inv.grant(extra.id)).toBeNull()
+    expect(inv.grant(kinds[0]!.id)).not.toBeNull()
+  })
+
+  it('각성체는 같은 defId 라도 별개 스택이다', () => {
+    const inv = new Inventory()
+    inv.grant('t7_single', false)
+    expect(inv.benchStacks()).toBe(1)
+    // 각성은 합성 재료가 아니라 별개 취급이므로 칸을 따로 쓴다
+    inv.grant('t7_single', true)
+    expect(inv.benchStacks()).toBe(2)
   })
 
   it('슬롯 여유 칸이 배치에 따라 줄어든다', () => {

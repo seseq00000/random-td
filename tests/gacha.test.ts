@@ -129,10 +129,30 @@ describe('Game.draw — 뽑기 명령', () => {
     const game = new Game(1)
     game.autoMerge = false
     game.gold = 10_000
-    for (let i = 0; i < BENCH_CAPACITY; i++) game.grantUnit('t1_single')
+    // 벤치는 **종류**로 센다 — 같은 걸 8개 넣어봐야 한 칸이다.
+    // 서로 다른 종류로 8칸을 채워야 실제로 막힌다.
+    const kinds = [...unitsOfTier(1), ...unitsOfTier(2)].slice(0, BENCH_CAPACITY)
+    for (const def of kinds) expect(game.grantUnit(def.id)).not.toBeNull()
+    expect(game.inv.benchStacks()).toBe(BENCH_CAPACITY)
+
     const goldBefore = game.gold
     expect(game.draw()).toEqual({ ok: false, reason: 'bench-full' })
     expect(game.gold).toBe(goldBefore)
+  })
+
+  it('벤치가 종류로 꽉 차도 이미 가진 종류는 계속 받는다', () => {
+    const game = new Game(1)
+    game.autoMerge = false
+    const kinds = [...unitsOfTier(1), ...unitsOfTier(2)].slice(0, BENCH_CAPACITY)
+    for (const def of kinds) game.grantUnit(def.id)
+    expect(game.inv.benchFull()).toBe(true)
+
+    // 중복은 칸을 안 쓰므로 몇 장이든 들어간다 — 이게 "스택은 한 칸" 규칙이다
+    const dup = kinds[0]!.id
+    expect(game.grantUnit(dup)).not.toBeNull()
+    expect(game.grantUnit(dup)).not.toBeNull()
+    expect(game.inv.totalCountOf(dup)).toBe(3)
+    expect(game.inv.benchStacks()).toBe(BENCH_CAPACITY)
   })
 
   it('전투 중에도 뽑을 수 있다 — 관전만 하는 시간이 없어야 한다', () => {

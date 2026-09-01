@@ -5,7 +5,16 @@ import { MAX_SLOTS, START_SLOTS } from './economy.js'
 import { tileKey } from './grid.js'
 import type { TileCoord, Tower, UnitInstance } from './types.js'
 
-/** 벤치는 8칸 고정. 확장을 넣으면 "필드를 넓힐까, 더 뽑을까" 2지선다가 흐려진다. */
+/**
+ * 벤치는 8칸 고정. 확장을 넣으면 "필드를 넓힐까, 더 뽑을까" 2지선다가 흐려진다.
+ *
+ * ⚠ 세는 단위가 바뀌었다: **유닛 개수가 아니라 종류(스택) 개수**다.
+ * 같은 종류는 몇 장이든 한 칸을 쓴다.
+ *
+ * 자동 합성을 기본에서 끄면서 중복이 계속 쌓이게 됐고, 개수로 세면 뽑기가 금방 막혀
+ * "직접 합성한다"는 재미가 성립하지 않았다. 스택을 한 칸으로 세면 중복은 자유롭게 모으되
+ * **"몇 종류까지 벌려둘 것인가"** 라는 판단은 그대로 남는다 — 컬렉터 미션의 기회비용도 살아 있다.
+ */
 export const BENCH_CAPACITY = 8
 
 /**
@@ -66,12 +75,39 @@ export class Inventory {
     return this.allUnits().filter((u) => u.defId === defId).length
   }
 
+  /** 스택 키 — 각성 여부까지 봐야 한다. 각성체는 합성 재료가 아니라 별개 취급이다. */
+  private static stackKey(defId: string, awakened: boolean): string {
+    return `${defId}:${awakened}`
+  }
+
+  /** 벤치가 쓰고 있는 칸 수 = **종류 수**. 같은 종류는 몇 장이든 한 칸. */
+  benchStacks(): number {
+    const kinds = new Set<string>()
+    for (const u of this.bench) kinds.add(Inventory.stackKey(u.defId, u.awakened))
+    return kinds.size
+  }
+
+  /** 이미 그 스택이 벤치에 있는가 — 있으면 칸을 더 쓰지 않는다 */
+  hasStack(defId: string, awakened: boolean): boolean {
+    return this.bench.some((u) => u.defId === defId && u.awakened === awakened)
+  }
+
+  /**
+   * 이 유닛을 벤치가 받을 수 있는가.
+   * **이미 있는 종류면 언제나 받는다** — 중복은 칸을 안 쓰기 때문이다.
+   */
+  canAcceptToBench(defId: string, awakened: boolean): boolean {
+    if (this.hasStack(defId, awakened)) return true
+    return this.benchStacks() < BENCH_CAPACITY
+  }
+
+  /** 새 종류를 더 못 받는 상태. 중복은 여전히 받을 수 있다는 점에 주의. */
   benchFull(): boolean {
-    return this.bench.length >= BENCH_CAPACITY
+    return this.benchStacks() >= BENCH_CAPACITY
   }
 
   benchFree(): number {
-    return BENCH_CAPACITY - this.bench.length
+    return BENCH_CAPACITY - this.benchStacks()
   }
 
   slotsFree(): number {
@@ -105,9 +141,9 @@ export class Inventory {
 
   // ── 획득 / 제거 ─────────────────────────────────────────
 
-  /** 벤치에 유닛을 넣는다. 정원 초과면 null — 뽑기 쪽에서 이걸 보고 거부한다. */
+  /** 벤치에 유닛을 넣는다. 새 종류를 받을 칸이 없으면 null — 뽑기 쪽에서 이걸 보고 거부한다. */
   grant(defId: string, awakened = false, paid = GACHA_COST): UnitInstance | null {
-    if (this.benchFull()) return null
+    if (!this.canAcceptToBench(defId, awakened)) return null
     const unit: UnitInstance = { uid: this.nextUid++, defId, awakened, paid }
     this.bench.push(unit)
     return unit
@@ -174,7 +210,8 @@ export class Inventory {
   returnToBench(uid: number): boolean {
     const idx = this.towers.findIndex((t) => t.uid === uid)
     if (idx < 0) return false
-    if (this.benchFull()) return false
+    const tw = this.towers[idx]!
+    if (!this.canAcceptToBench(tw.defId, tw.awakened)) return false
     const [tower] = this.towers.splice(idx, 1)
     this.occupied.delete(tileKey(tower!.tx, tower!.ty))
     this.bench.push({

@@ -380,7 +380,8 @@ function drawErrorText(reason: string): string {
     case 'insufficient-gold':
       return `골드가 부족하다 (${GACHA_COST}골드 필요)`
     case 'bench-full':
-      return '벤치가 가득 찼다 — 배치하거나 팔아라'
+      // 개수가 아니라 종류가 찼다는 걸 알려줘야 한다 — 중복은 얼마든지 더 받는다
+      return `벤치에 ${BENCH_CAPACITY}종류가 꽉 찼다 — 합성하거나 배치해서 종류를 줄여라`
     case 'wrong-phase':
       return '준비 페이즈에만 뽑을 수 있다'
     default:
@@ -713,7 +714,8 @@ function renderFieldSheet(): void {
 
   const summary = document.createElement('div')
   summary.className = 'mission-summary'
-  summary.textContent = `필드 ${game.towers.length}/${game.slotsOwned}칸 · 벤치 ${game.bench.length}/${BENCH_CAPACITY}`
+  // 벤치는 종류로 센다 — 같은 유닛 여러 장은 한 칸이다
+  summary.textContent = `필드 ${game.towers.length}/${game.slotsOwned}칸 · 벤치 ${game.inv.benchStacks()}/${BENCH_CAPACITY}종류 (${game.bench.length}장)`
   sheetBody.appendChild(summary)
 
   const cost = game.nextSlotCost()
@@ -891,11 +893,20 @@ function renderPreview(): void {
 
 let lastLogLength = 0
 
+/** 값이 바뀔 때만 튀게 한다 — 매 프레임 애니메이션을 다시 걸면 아예 안 보인다 */
+function setStat(el: HTMLElement, value: string): void {
+  if (el.textContent === value) return
+  el.textContent = value
+  el.classList.remove('bump')
+  void el.offsetWidth
+  el.classList.add('bump')
+}
+
 function updateHud(): void {
   const gold = Math.floor(game.gold)
-  statWave.textContent = String(game.wave)
-  statLife.textContent = String(game.life)
-  statGold.textContent = String(gold)
+  setStat(statWave, String(game.wave))
+  setStat(statLife, String(game.life))
+  setStat(statGold, String(gold))
 
   const inPrep = game.phase === 'prep' && game.over === 'none'
 

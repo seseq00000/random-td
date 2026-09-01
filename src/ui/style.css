@@ -110,35 +110,105 @@ button.mini {
   padding: 2px 4px;
 }
 
+/* 라이프·골드는 이 게임에서 가장 자주 보는 숫자다 — 칩으로 감싸서 배경에서 떼어낸다 */
 .hud-stat {
   display: flex;
-  align-items: baseline;
-  gap: 4px;
-  font-size: 13px;
-  color: var(--muted);
+  align-items: center;
+  gap: 6px;
+  padding: 4px 9px 4px 6px;
+  border-radius: 9px;
+  background: var(--panel);
+  border: 1px solid var(--line);
   font-variant-numeric: tabular-nums;
 }
 
-.hud-stat b {
-  font-size: 19px;
-  font-weight: 700;
+.hud-val {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.05;
+}
+
+.hud-val b {
+  font-size: 20px;
+  font-weight: 800;
   color: var(--text);
 }
 
+.hud-val em {
+  font-style: normal;
+  font-size: 8.5px;
+  letter-spacing: 0.02em;
+  color: var(--muted);
+}
+
+.ico {
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+}
+
+.ico-life {
+  color: var(--life);
+  font-size: 18px;
+  line-height: 1;
+  text-shadow: 0 0 6px rgba(255, 123, 123, 0.5);
+}
+
+/* 금화 — 이모지 대신 직접 그린다. 어느 기기에서나 같은 모양이 나온다. */
+.ico-gold {
+  width: 17px;
+  height: 17px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 34% 30%, #ffe9a8, var(--gold) 55%, #b78d20);
+  box-shadow:
+    inset 0 0 0 1.5px #8f6c15,
+    0 0 6px rgba(240, 198, 81, 0.45);
+}
+
 .hud-stat.life {
+  border-color: rgba(255, 123, 123, 0.4);
+}
+.hud-stat.life .hud-val b {
   color: var(--life);
 }
-.hud-stat.life b {
-  color: var(--life);
-}
+
 .hud-stat.gold {
+  border-color: rgba(240, 198, 81, 0.4);
+}
+.hud-stat.gold .hud-val b {
   color: var(--gold);
 }
-.hud-stat.gold b {
-  color: var(--gold);
+
+.hud-stat.wave {
+  padding-left: 9px;
 }
-.hud-stat.wave b {
-  font-size: 16px;
+.hud-stat.wave .hud-val b {
+  font-size: 17px;
+}
+
+/* 값이 바뀌면 잠깐 튄다 — 전투 중에 골드가 들어오는 게 눈에 걸려야 한다 */
+.hud-val b.bump {
+  animation: hud-bump 0.34s ease-out;
+}
+
+@keyframes hud-bump {
+  0% {
+    transform: scale(1);
+  }
+  35% {
+    transform: scale(1.28);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hud-val b.bump {
+    animation: none;
+  }
 }
 
 .phase-chip {

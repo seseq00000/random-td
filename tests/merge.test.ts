@@ -4,7 +4,6 @@ import { MERGE_COUNT, findMerge, mergeProduct } from '../src/core/merge.js'
 import { createRng } from '../src/core/rng.js'
 import type { UnitInstance } from '../src/core/types.js'
 import { SLOT_POSITIONS } from '../src/data/field.js'
-import { BENCH_CAPACITY } from '../src/core/inventory.js'
 import { TIER_COUNT, getUnit, unitsOfTier } from '../src/data/units.js'
 
 const noLock = () => false
@@ -172,25 +171,22 @@ describe('Game 자동 합성', () => {
     expect(Math.min(...tiers)).toBeGreaterThanOrEqual(2)
   })
 
-  it('자동 합성을 꺼도 같은 종류는 얼마든지 쌓인다 — 스택은 한 칸이다', () => {
+  it('자동 합성을 꺼도 얼마든지 쌓인다 — 벤치에 정원이 없다', () => {
     const game = idleGame()
     let granted = 0
     for (let i = 0; i < 9; i++) if (game.grantUnit('t1_single')) granted++
-    // 개수로 세던 시절엔 8개에서 막혔다. 지금은 한 종류 = 한 칸이라 전부 들어간다.
+    // 개수로 세던 시절엔 8개에서 막혔다. 지금은 아무것도 안 막는다.
     expect(granted).toBe(9)
     expect(game.inv.benchStacks()).toBe(1)
   })
 
-  it('막히는 건 종류 수다', () => {
+  it('종류를 아무리 벌려도 막히지 않는다', () => {
     const game = idleGame()
-    const kinds = [...unitsOfTier(1), ...unitsOfTier(2)].slice(0, BENCH_CAPACITY)
-    for (const def of kinds) expect(game.grantUnit(def.id)).not.toBeNull()
-    expect(game.inv.benchStacks()).toBe(BENCH_CAPACITY)
-
-    // 9번째 **종류**는 거부되고, 이미 가진 종류는 계속 받는다
-    const extra = unitsOfTier(2).find((d) => !kinds.some((k) => k.id === d.id))!
-    expect(game.grantUnit(extra.id)).toBeNull()
-    expect(game.grantUnit(kinds[0]!.id)).not.toBeNull()
+    for (const def of [...unitsOfTier(1), ...unitsOfTier(2)]) {
+      expect(game.grantUnit(def.id)).not.toBeNull()
+    }
+    expect(game.inv.benchStacks()).toBe(12)
+    expect(game.grantUnit('t3_single')).not.toBeNull()
   })
 
   it('합성 결과가 필드에 있던 자리를 물려받는다', () => {

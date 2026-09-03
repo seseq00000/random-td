@@ -499,14 +499,22 @@ canvas#game {
   font-size: 13px;
 }
 
-/* 8종류가 한 화면에 다 보이는 2행 그리드. 스크롤해서 찾을 일이 없어야 한다. */
+/*
+ * 4열 그리드. 두 줄이 기본으로 보이고, 벤치에 정원이 없으므로 종류가 늘면
+ * 줄이 늘어나 세로로 스크롤된다. 두 줄까지는 스크롤 없이 다 보인다.
+ */
 #bench {
   flex: 1;
   min-width: 0;
   display: grid;
   grid-template-columns: repeat(4, 1fr);
-  grid-template-rows: repeat(2, 1fr);
+  grid-auto-rows: calc((100% - 4px) / 2);
   gap: 4px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  align-content: start;
+  scrollbar-width: thin;
+  -webkit-overflow-scrolling: touch;
 }
 
 /* ── 유닛 카드 ──────────────────────────────────── */
@@ -1088,6 +1096,55 @@ button.declared:hover:not(:disabled) {
 
 .dialog .error[hidden] {
   display: none;
+}
+
+/* ── 메인 메뉴 설정 ─────────────────────────────── */
+
+#gate-settings {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: 1fr;
+  gap: 6px;
+  margin-top: 12px;
+}
+
+.opt {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 9px 4px;
+  min-height: 62px;
+  font-size: 11px;
+  color: var(--text);
+}
+
+.opt[hidden] {
+  display: none;
+}
+
+.opt-icon {
+  font-size: 18px;
+  line-height: 1.1;
+}
+
+.opt-label {
+  font-weight: 600;
+}
+
+.opt-state {
+  font-size: 10px;
+  color: var(--accent);
+  font-weight: 700;
+}
+
+/* 꺼진 건 한눈에 죽어 보여야 한다 */
+.opt.off {
+  opacity: 0.55;
+}
+
+.opt.off .opt-state {
+  color: var(--muted);
 }
 
 .dialog-actions {

@@ -3,7 +3,6 @@ import { rollTier, rollUnit } from '../src/core/gacha.js'
 import { Game } from '../src/core/gameState.js'
 import { createRng } from '../src/core/rng.js'
 import { GACHA_COST, GACHA_TABLE, tierWeights } from '../src/data/gachaTable.js'
-import { BENCH_CAPACITY } from '../src/core/inventory.js'
 import { TIER_COUNT, getUnit, unitsOfTier } from '../src/data/units.js'
 import { TOTAL_WAVES } from '../src/data/waves.js'
 
@@ -125,34 +124,25 @@ describe('Game.draw — 뽑기 명령', () => {
     expect(game.bench.length).toBe(0)
   })
 
-  it('벤치가 가득 차면 거부하고 골드도 안 깎인다', () => {
+  it('벤치에는 정원이 없다 — 골드만 있으면 계속 뽑힌다', () => {
     const game = new Game(1)
     game.autoMerge = false
     game.gold = 10_000
-    // 벤치는 **종류**로 센다 — 같은 걸 8개 넣어봐야 한 칸이다.
-    // 서로 다른 종류로 8칸을 채워야 실제로 막힌다.
-    const kinds = [...unitsOfTier(1), ...unitsOfTier(2)].slice(0, BENCH_CAPACITY)
-    for (const def of kinds) expect(game.grantUnit(def.id)).not.toBeNull()
-    expect(game.inv.benchStacks()).toBe(BENCH_CAPACITY)
 
-    const goldBefore = game.gold
-    expect(game.draw()).toEqual({ ok: false, reason: 'bench-full' })
-    expect(game.gold).toBe(goldBefore)
+    // 예전엔 8칸(나중엔 8종류)에서 막혔다. 이제 막는 건 골드뿐이다.
+    for (let i = 0; i < 40; i++) expect(game.draw().ok).toBe(true)
+    expect(game.bench.length).toBe(40)
   })
 
-  it('벤치가 종류로 꽉 차도 이미 가진 종류는 계속 받는다', () => {
+  it('골드가 떨어지는 순간에만 멈춘다', () => {
     const game = new Game(1)
     game.autoMerge = false
-    const kinds = [...unitsOfTier(1), ...unitsOfTier(2)].slice(0, BENCH_CAPACITY)
-    for (const def of kinds) game.grantUnit(def.id)
-    expect(game.inv.benchFull()).toBe(true)
+    game.gold = GACHA_COST * 3
 
-    // 중복은 칸을 안 쓰므로 몇 장이든 들어간다 — 이게 "스택은 한 칸" 규칙이다
-    const dup = kinds[0]!.id
-    expect(game.grantUnit(dup)).not.toBeNull()
-    expect(game.grantUnit(dup)).not.toBeNull()
-    expect(game.inv.totalCountOf(dup)).toBe(3)
-    expect(game.inv.benchStacks()).toBe(BENCH_CAPACITY)
+    expect(game.draw().ok).toBe(true)
+    expect(game.draw().ok).toBe(true)
+    expect(game.draw().ok).toBe(true)
+    expect(game.draw()).toEqual({ ok: false, reason: 'insufficient-gold' })
   })
 
   it('전투 중에도 뽑을 수 있다 — 관전만 하는 시간이 없어야 한다', () => {

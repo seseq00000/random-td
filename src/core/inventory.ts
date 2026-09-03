@@ -6,16 +6,17 @@ import { tileKey } from './grid.js'
 import type { TileCoord, Tower, UnitInstance } from './types.js'
 
 /**
- * 벤치는 8칸 고정. 확장을 넣으면 "필드를 넓힐까, 더 뽑을까" 2지선다가 흐려진다.
+ * 벤치에는 **정원이 없다.**
  *
- * ⚠ 세는 단위가 바뀌었다: **유닛 개수가 아니라 종류(스택) 개수**다.
- * 같은 종류는 몇 장이든 한 칸을 쓴다.
+ * 원안은 8칸 고정이었고("필드를 넓힐까, 더 뽑을까" 2지선다를 살리려고),
+ * 그다음 종류 단위 8칸으로 완화했다. 그래도 뽑기가 막혔다 — 자동 합성을 껐으니
+ * 종류가 계속 늘고, 자리를 비우려면 스택을 통째로 팔아야 해서
+ * **"뽑고 싶은데 못 뽑는" 상태가 자주 왔다.**
  *
- * 자동 합성을 기본에서 끄면서 중복이 계속 쌓이게 됐고, 개수로 세면 뽑기가 금방 막혀
- * "직접 합성한다"는 재미가 성립하지 않았다. 스택을 한 칸으로 세면 중복은 자유롭게 모으되
- * **"몇 종류까지 벌려둘 것인가"** 라는 판단은 그대로 남는다 — 컬렉터 미션의 기회비용도 살아 있다.
+ * 이제 뽑기를 막는 건 **골드뿐**이다. 병목은 전부 필드 슬롯(`MAX_SLOTS`)이 진다 —
+ * 벤치에 아무리 쌓아도 싸우는 건 필드에 올린 것뿐이고, 슬롯 가격이 여전히
+ * 이 게임에서 가장 큰 단일 의사결정이다.
  */
-export const BENCH_CAPACITY = 8
 
 /**
  * 배치 실패 사유.
@@ -87,27 +88,19 @@ export class Inventory {
     return kinds.size
   }
 
-  /** 이미 그 스택이 벤치에 있는가 — 있으면 칸을 더 쓰지 않는다 */
+  /** 이미 그 스택이 벤치에 있는가 */
   hasStack(defId: string, awakened: boolean): boolean {
     return this.bench.some((u) => u.defId === defId && u.awakened === awakened)
   }
 
   /**
-   * 이 유닛을 벤치가 받을 수 있는가.
-   * **이미 있는 종류면 언제나 받는다** — 중복은 칸을 안 쓰기 때문이다.
+   * 벤치는 언제나 받는다 — 정원이 없다.
+   *
+   * 메서드를 남겨두는 이유: 호출부(`grant`/`returnToBench`)가 "받을 수 있나"를 묻는
+   * 형태를 유지하면, 나중에 정원을 다시 넣거나 조건을 붙일 때 여기 한 곳만 고치면 된다.
    */
-  canAcceptToBench(defId: string, awakened: boolean): boolean {
-    if (this.hasStack(defId, awakened)) return true
-    return this.benchStacks() < BENCH_CAPACITY
-  }
-
-  /** 새 종류를 더 못 받는 상태. 중복은 여전히 받을 수 있다는 점에 주의. */
-  benchFull(): boolean {
-    return this.benchStacks() >= BENCH_CAPACITY
-  }
-
-  benchFree(): number {
-    return BENCH_CAPACITY - this.benchStacks()
+  canAcceptToBench(_defId: string, _awakened: boolean): boolean {
+    return true
   }
 
   slotsFree(): number {

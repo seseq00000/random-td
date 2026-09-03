@@ -2,7 +2,6 @@ import { MAX_SLOTS } from './core/economy.js'
 import { GACHA_COST } from './core/gacha.js'
 import { Game } from './core/gameState.js'
 import type { SpawnGroup } from './core/wave.js'
-import { BENCH_CAPACITY } from './core/inventory.js'
 import { MERGE_COUNT } from './core/merge.js'
 import {
   bestPerNickname,
@@ -20,6 +19,14 @@ import { CELEBRATE_FROM_TIER, tierColor, tierLabel } from './data/tiers.js'
 import { getUnit } from './data/units.js'
 import { TYPE_MODIFIERS } from './data/waves.js'
 import { AudioEngine, DEFAULT_AUDIO } from './audio/engine.js'
+import {
+  VIBRATE,
+  Vibration,
+  fullscreenSupported,
+  isFullscreen,
+  isStandalone,
+  toggleFullscreen,
+} from './ui/settings.js'
 import { GameObserver } from './render/observer.js'
 import { ROLE_STYLE, Renderer } from './render/renderer.js'
 import { createRecordStore } from './storage/recordStore.js'
@@ -39,6 +46,9 @@ const celebrateEl = $<HTMLDivElement>('#celebrate')
 const startBtn = $<HTMLButtonElement>('#btn-start')
 const drawBtn = $<HTMLButtonElement>('#btn-draw')
 const muteBtn = $<HTMLButtonElement>('#btn-mute')
+const optSound = $<HTMLButtonElement>('#opt-sound')
+const optVibrate = $<HTMLButtonElement>('#opt-vibrate')
+const optFullscreen = $<HTMLButtonElement>('#opt-fullscreen')
 
 const sheetEl = $<HTMLElement>('#sheet')
 const sheetBackdrop = $<HTMLDivElement>('#sheet-backdrop')
@@ -68,6 +78,9 @@ const tabMissions = $<HTMLElement>('#tab-missions')
 const tabChallenge = $<HTMLElement>('#tab-challenge')
 const tabField = $<HTMLElement>('#tab-field')
 
+/** 벤치가 비어 있을 때 점선으로 보여줄 최소 칸 수 — 순수 표시용이다 */
+const BENCH_MIN_TILES = 8
+
 const store = createRecordStore()
 const renderer = new Renderer(canvas)
 const observer = new GameObserver()
@@ -93,10 +106,67 @@ function syncMuteButton(): void {
 
 muteBtn.addEventListener('click', () => {
   audio.unlock()
-  const muted = audio.toggleMute()
+  audio.toggleMute()
   syncMuteButton()
-  void store.setAudio({ ...audio.getSettings(), muted })
+  persistSettings()
 })
+
+// ── 메인 메뉴 설정 (사운드 · 진동 · 전체화면) ───────────────
+// 시작 전에 켜고 끌 수 있어야 조용한 데서 안 놀란다.
+
+const vibration = new Vibration()
+let vibrateOn = true
+
+function persistSettings(): void {
+  void store.setAudio({ ...audio.getSettings(), vibrate: vibrateOn })
+}
+
+function setOptState(btn: HTMLButtonElement, on: boolean, onText = '켜짐', offText = '꺼짐'): void {
+  btn.classList.toggle('off', !on)
+  btn.setAttribute('aria-pressed', String(on))
+  const state = btn.querySelector('.opt-state')
+  if (state) state.textContent = on ? onText : offText
+}
+
+function syncSettingsUI(): void {
+  setOptState(optSound, !audio.muted)
+  const icon = optSound.querySelector('.opt-icon')
+  if (icon) icon.textContent = audio.muted ? '🔇' : '🔊'
+
+  setOptState(optVibrate, vibrateOn)
+  // 지원 안 하는 기기(iOS 사파리)에서는 아예 감춘다 —
+  // 눌러도 아무 일 없는 버튼이 제일 나쁘다
+  optVibrate.hidden = !vibration.supported
+
+  const fs = isFullscreen()
+  setOptState(optFullscreen, fs, '켜짐', '끄기')
+  // 홈 화면에서 실행 중이면 이미 전체화면이라 버튼이 의미 없다
+  optFullscreen.hidden = !fullscreenSupported() || isStandalone()
+}
+
+optSound.addEventListener('click', () => {
+  audio.unlock()
+  audio.toggleMute()
+  syncMuteButton()
+  syncSettingsUI()
+  persistSettings()
+})
+
+optVibrate.addEventListener('click', () => {
+  vibrateOn = !vibrateOn
+  vibration.setEnabled(vibrateOn)
+  // 켤 때 한 번 울려서 "이게 진동이다"를 바로 알려준다
+  if (vibrateOn) vibration.buzz([30])
+  syncSettingsUI()
+  persistSettings()
+})
+
+optFullscreen.addEventListener('click', () => {
+  // 전체화면은 **사용자 제스처 안에서만** 허용된다 — 그래서 여기서 직접 부른다
+  void toggleFullscreen().then(syncSettingsUI)
+})
+
+document.addEventListener('fullscreenchange', syncSettingsUI)
 
 // ── 판 단위 상태 ───────────────────────────────────────────
 
@@ -231,9 +301,13 @@ async function boot(): Promise<void> {
   const saved = await store.getNickname()
   if (saved) nicknameInput.value = saved
 
-  // 뮤트는 새로고침해도 유지된다. 저장된 게 없으면 기본값(켜짐·음량 0.6).
-  audio.applySettings((await store.getAudio()) ?? DEFAULT_AUDIO)
+  // 설정은 새로고침해도 유지된다. 저장된 게 없으면 기본값(소리·진동 켜짐, 음량 0.6).
+  const saved2 = (await store.getAudio()) ?? { ...DEFAULT_AUDIO, vibrate: true }
+  audio.applySettings(saved2)
+  vibrateOn = saved2.vibrate
+  vibration.setEnabled(vibrateOn)
   syncMuteButton()
+  syncSettingsUI()
   audio.setScene('lobby')
 
   renderRanking(gateRankingEl, null)
@@ -394,6 +468,7 @@ drawBtn.addEventListener('click', () => {
     // 등급명이 붙는 티어부터만 축하한다 — T1·T2 까지 띄우면 특별함이 사라진다
     celebrate(celebrateEl, result.defId)
     audio.celebrate(getUnit(result.defId).tier)
+    vibration.buzz(VIBRATE.celebrate)
   } else {
     audio.draw()
   }
@@ -428,9 +503,6 @@ function drawErrorText(reason: string): string {
   switch (reason) {
     case 'insufficient-gold':
       return `골드가 부족하다 (${GACHA_COST}골드 필요)`
-    case 'bench-full':
-      // 개수가 아니라 종류가 찼다는 걸 알려줘야 한다 — 중복은 얼마든지 더 받는다
-      return `벤치에 ${BENCH_CAPACITY}종류가 꽉 찼다 — 합성하거나 배치해서 종류를 줄여라`
     case 'wrong-phase':
       return '준비 페이즈에만 뽑을 수 있다'
     default:
@@ -551,8 +623,9 @@ function renderBench(): void {
     benchEl.appendChild(tile)
   }
 
-  // 남은 칸을 점선으로 채운다 — "몇 종류까지 벌릴 수 있나"가 보여야 판단이 된다
-  for (let i = groups.length; i < BENCH_CAPACITY; i++) {
+  // 벤치에는 정원이 없다. 다만 처음 두 줄이 텅 비어 보이면 허전해서
+  // **최소 8칸까지만** 점선으로 채운다 — 그 이상은 그냥 늘어나고 세로로 스크롤된다.
+  for (let i = groups.length; i < BENCH_MIN_TILES; i++) {
     const slot = document.createElement('div')
     slot.className = 'unit-tile empty'
     if (i === groups.length && groups.length === 0) slot.textContent = '뽑기'
@@ -785,8 +858,8 @@ function renderFieldSheet(): void {
 
   const summary = document.createElement('div')
   summary.className = 'mission-summary'
-  // 벤치는 종류로 센다 — 같은 유닛 여러 장은 한 칸이다
-  summary.textContent = `필드 ${game.towers.length}/${game.slotsOwned}칸 · 벤치 ${game.inv.benchStacks()}/${BENCH_CAPACITY}종류 (${game.bench.length}장)`
+  // 벤치는 정원이 없다 — 병목은 전부 필드 슬롯이 진다
+  summary.textContent = `필드 ${game.towers.length}/${game.slotsOwned}칸 · 벤치 ${game.inv.benchStacks()}종류 (${game.bench.length}장, 제한 없음)`
   sheetBody.appendChild(summary)
 
   const cost = game.nextSlotCost()
@@ -995,7 +1068,8 @@ function updateHud(): void {
   startBtn.disabled = !inPrep
   startBtn.classList.toggle('ready', inPrep)
   // 뽑기는 전투 중에도 된다 — 준비 페이즈 전용이던 제한을 풀었다
-  drawBtn.disabled = !game.canOperate() || gold < GACHA_COST || game.inv.benchFull()
+  // 벤치 정원이 없으므로 뽑기를 막는 건 골드뿐이다
+  drawBtn.disabled = !game.canOperate() || gold < GACHA_COST
 
   // 탭 배지 — 시트를 열지 않고도 "볼 게 있다"가 보여야 한다
   const activeMissions = game.missionProgress().filter((r) => !r.done && r.have > 0).length
@@ -1046,6 +1120,13 @@ function frame(now: number): void {
   // 양쪽에서 따로 diff 하면 두 로직이 반드시 어긋난다.
   const events = observer.observe(game)
   audio.applyEvents(events)
+
+  // 진동은 **아껴 쓴다** — 손에 계속 울리면 금방 거슬리고 배터리도 먹는다.
+  // 판단이 걸린 순간(라이프가 깎였다 / 보스가 왔다)에만 준다.
+  if (events.coreHit) vibration.buzz(VIBRATE.coreHit)
+  else if (events.enemySpawns.some((s) => s.type === 'boss')) vibration.buzz(VIBRATE.bossSpawn)
+  if (events.over === 'defeat') vibration.buzz(VIBRATE.defeat)
+
   // BGM 은 곡을 바꾸지 않고 레이어만 켠다 — 준비↔전투가 매 웨이브 일어나므로
   // 곡이 바뀌면 그때마다 끊겨서 오히려 산만하다
   if (running) audio.setScene(game.phase === 'battle' ? 'battle' : 'prep')

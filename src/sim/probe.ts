@@ -147,14 +147,7 @@ function playPrep(game: Game, s: Strategy): { draws: number; challenges: number 
       continue
     }
     if (game.gold < GACHA_COST) break
-    if (game.inv.benchFull()) {
-      // 벤치가 막히면 잠기지 않은 것 중 가장 약한 걸 판다
-      const sellable = [...game.bench]
-        .filter((b) => !game.inv.isLocked(b.defId))
-        .sort((a, b) => getUnit(a.defId).tier - getUnit(b.defId).tier)[0]
-      if (!sellable) break
-      game.sell(sellable.uid)
-    }
+    // 벤치 정원이 사라져서 자리를 비우려고 파는 단계가 없어졌다
     if (!game.draw().ok) break
     draws++
     if (s.useMissions) manageLocks(game)

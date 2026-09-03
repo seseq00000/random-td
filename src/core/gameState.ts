@@ -32,14 +32,13 @@ import {
   waveClearReward,
 } from './economy.js'
 import { GACHA_COST, rollUnit, type DrawFailure } from './gacha.js'
-import { BENCH_CAPACITY, Inventory, type BuySlotResult, type PlaceResult } from './inventory.js'
+import { Inventory, type BuySlotResult, type PlaceResult } from './inventory.js'
 import { findMerge, mergeProduct } from './merge.js'
 import { orbitPosition, reachedCore, spawnAngle } from './orbit.js'
 import { SETTLE_DURATION, prepDuration, type Phase } from './phase.js'
 import { createRng, type Rng } from './rng.js'
 import type { Enemy, Projectile, Tower, UnitInstance, Vec2 } from './types.js'
 
-export { BENCH_CAPACITY }
 
 export type DrawResult =
   | { ok: true; defId: string; cost: number }
@@ -167,14 +166,10 @@ export class Game {
     return this.over === 'none'
   }
 
-  /**
-   * 뽑기 1회. 벤치 만차면 거부한다 —
-   * 판매나 합성으로 비워야 뽑을 수 있다는 게 압박의 일부다.
-   */
+  /** 뽑기 1회. 벤치에는 정원이 없으므로 막는 건 골드뿐이다. */
   draw(): DrawResult {
     if (!this.canOperate()) return { ok: false, reason: 'wrong-phase' }
     if (this.gold < GACHA_COST) return { ok: false, reason: 'insufficient-gold' }
-    if (this.inv.benchFull()) return { ok: false, reason: 'bench-full' }
 
     const defId = rollUnit(this.wave, this.rng)
     this.gold -= GACHA_COST

@@ -1,0 +1,13 @@
+{
+  "name": "랜덤 타워디펜스",
+  "short_name": "랜덤TD",
+  "description": "뽑기의 운을 조합·미션·도전으로 극복하는 나선형 타워디펜스",
+  "start_url": "./",
+  "scope": "./",
+  "display": "fullscreen",
+  "display_override": ["fullscreen", "standalone"],
+  "orientation": "portrait",
+  "background_color": "#101318",
+  "theme_color": "#101318",
+  "lang": "ko"
+}

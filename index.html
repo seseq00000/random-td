@@ -4,6 +4,17 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <title>랜덤 타워디펜스</title>
+    <!--
+      iOS 사파리는 전체화면 API 를 임의 요소에 안 열어준다(비디오만 된다).
+      대신 **홈 화면에 추가**하면 주소창 없이 뜬다 — 그 경로를 열어두는 설정이다.
+      안드로이드 크롬은 전체화면 버튼이 그냥 동작하므로 둘 다 커버된다.
+    -->
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="랜덤TD" />
+    <meta name="theme-color" content="#101318" />
+    <link rel="manifest" href="manifest.webmanifest" />
     <link rel="stylesheet" href="/src/ui/style.css" />
   </head>
   <body>
@@ -16,6 +27,26 @@
         <input id="nickname" type="text" maxlength="12" placeholder="12자 이내" autocomplete="off" />
         <p id="gate-error" class="error" hidden></p>
         <button id="btn-enter" class="primary wide">시작</button>
+
+        <!-- 설정 — 시작 전에 켜고 끌 수 있어야 조용한 데서 안 놀란다 -->
+        <div id="gate-settings">
+          <button id="opt-sound" class="opt" aria-pressed="true">
+            <span class="opt-icon">🔊</span>
+            <span class="opt-label">사운드</span>
+            <span class="opt-state">켜짐</span>
+          </button>
+          <button id="opt-vibrate" class="opt" aria-pressed="true">
+            <span class="opt-icon">📳</span>
+            <span class="opt-label">진동</span>
+            <span class="opt-state">켜짐</span>
+          </button>
+          <button id="opt-fullscreen" class="opt">
+            <span class="opt-icon">⛶</span>
+            <span class="opt-label">전체화면</span>
+            <span class="opt-state">끄기</span>
+          </button>
+        </div>
+
         <div id="gate-ranking"></div>
       </div>
     </div>

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { MAX_SLOTS, START_SLOTS } from '../src/core/economy.js'
 import { Game } from '../src/core/gameState.js'
-import { BENCH_CAPACITY, Inventory } from '../src/core/inventory.js'
+import { Inventory } from '../src/core/inventory.js'
 import { SLOT_POSITIONS } from '../src/data/field.js'
 import { SLOT_PRICES, TOTAL_SLOT_COST, nextSlotPrice, sellValue } from '../src/data/slots.js'
 import { GACHA_COST } from '../src/data/gachaTable.js'
@@ -209,20 +209,23 @@ describe('Inventory 집계', () => {
     expect(inv.totalCountOf('t7_single')).toBe(2)
   })
 
-  it('벤치 정원과 여유 칸은 종류로 센다', () => {
+  it('벤치는 정원이 없어 무엇이든 받는다', () => {
     const inv = new Inventory()
-    expect(inv.benchFree()).toBe(BENCH_CAPACITY)
+    for (const def of [...unitsOfTier(1), ...unitsOfTier(2), ...unitsOfTier(3)]) {
+      expect(inv.grant(def.id)).not.toBeNull()
+    }
+    // 종류를 18개 벌려도, 같은 걸 또 넣어도 거부되지 않는다
+    expect(inv.benchStacks()).toBe(18)
+    expect(inv.grant('t1_single')).not.toBeNull()
+    expect(inv.grant('t7_pierce')).not.toBeNull()
+    expect(inv.bench.length).toBe(20)
+  })
 
-    const kinds = [...unitsOfTier(1), ...unitsOfTier(2)].slice(0, BENCH_CAPACITY)
-    for (const def of kinds) expect(inv.grant(def.id)).not.toBeNull()
-    expect(inv.benchFull()).toBe(true)
-    expect(inv.benchFree()).toBe(0)
-    expect(inv.benchStacks()).toBe(BENCH_CAPACITY)
-
-    // 새 종류는 거부, 이미 있는 종류는 계속 받는다
-    const extra = unitsOfTier(2).find((d) => !kinds.some((k) => k.id === d.id))!
-    expect(inv.grant(extra.id)).toBeNull()
-    expect(inv.grant(kinds[0]!.id)).not.toBeNull()
+  it('benchStacks 는 종류만 센다 — 중복은 한 칸으로 보인다', () => {
+    const inv = new Inventory()
+    for (let i = 0; i < 5; i++) inv.grant('t1_single')
+    expect(inv.bench.length).toBe(5)
+    expect(inv.benchStacks()).toBe(1)
   })
 
   it('각성체는 같은 defId 라도 별개 스택이다', () => {

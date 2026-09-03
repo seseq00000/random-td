@@ -32,6 +32,8 @@ export interface StoredAudio {
   muted: boolean
   /** 0~1 */
   volume: number
+  /** 진동. 지원하지 않는 기기(iOS 사파리)에서는 무시된다 */
+  vibrate: boolean
 }
 
 /** 저장 상한. 넘으면 오래된 것부터 버린다 — localStorage 용량은 유한하다. */
@@ -141,8 +143,13 @@ export class LocalRecordStore implements RecordStore {
       if (typeof parsed !== 'object' || parsed === null) return null
       const a = parsed as Record<string, unknown>
       if (typeof a.muted !== 'boolean' || typeof a.volume !== 'number') return null
-      // 손댄 값이 들어와도 스피커가 터지면 안 된다
-      return { muted: a.muted, volume: Math.max(0, Math.min(1, a.volume)) }
+      return {
+        muted: a.muted,
+        // 손댄 값이 들어와도 스피커가 터지면 안 된다
+        volume: Math.max(0, Math.min(1, a.volume)),
+        // 나중에 추가된 항목이라 예전 저장본에는 없다 — 기본 켜짐으로 읽는다
+        vibrate: typeof a.vibrate === 'boolean' ? a.vibrate : true,
+      }
     } catch {
       return null
     }

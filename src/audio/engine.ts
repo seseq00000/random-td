@@ -65,6 +65,9 @@ export const DEFAULT_AUDIO: AudioSettings = {
   volume: 0.6,
 }
 
+/** 저장된 설정에는 진동도 같이 들어 있다 — 오디오 엔진은 그건 모른다 */
+export type StoredSettings = AudioSettings & { vibrate: boolean }
+
 export class AudioEngine {
   private ctx: AudioContext | null = null
   private master: GainNode | null = null

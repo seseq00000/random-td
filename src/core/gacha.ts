@@ -2,7 +2,12 @@ import { GACHA_COST, tierWeights } from '../data/gachaTable.js'
 import { unitsOfTier } from '../data/units.js'
 import type { Rng } from './rng.js'
 
-export type DrawFailure = 'insufficient-gold' | 'bench-full' | 'wrong-phase'
+/**
+ * 뽑기 실패 사유.
+ *
+ * `bench-full` 은 벤치 정원을 없애면서 사라졌다 — 이제 뽑기를 막는 건 골드뿐이다.
+ */
+export type DrawFailure = 'insufficient-gold' | 'wrong-phase'
 
 /**
  * 1단계 — 티어 추첨. 백분율 가중치를 누적해서 고른다.

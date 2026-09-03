@@ -303,7 +303,9 @@ describe('LocalRecordStore 내구성', () => {
     await expect(store.getDiscovered()).resolves.toEqual([])
     await expect(store.addDiscovered(['t1_single'])).resolves.toBeUndefined()
     await expect(store.getAudio()).resolves.toBeNull()
-    await expect(store.setAudio({ muted: true, volume: 0.5 })).resolves.toBeUndefined()
+    await expect(
+      store.setAudio({ muted: true, volume: 0.5, vibrate: true }),
+    ).resolves.toBeUndefined()
   })
 
   it('발견 목록이 깨져 있어도 빈 목록으로 취급한다', async () => {
@@ -328,8 +330,8 @@ describe('소리 설정 저장', () => {
       // 저장한 적이 없으면 null — 호출부가 기본값을 쓴다
       expect(await store.getAudio()).toBeNull()
 
-      await store.setAudio({ muted: true, volume: 0.3 })
-      expect(await store.getAudio()).toEqual({ muted: true, volume: 0.3 })
+      await store.setAudio({ muted: true, volume: 0.3, vibrate: false })
+      expect(await store.getAudio()).toEqual({ muted: true, volume: 0.3, vibrate: false })
     })
   }
 
@@ -345,9 +347,20 @@ describe('소리 설정 저장', () => {
   it('음량은 0~1 로 조인다 — 손댄 값에 스피커가 터지면 안 된다', async () => {
     const storage = fakeStorage()
     storage.setItem('random-td:audio:v1', JSON.stringify({ muted: false, volume: 99 }))
-    expect(await new LocalRecordStore(storage).getAudio()).toEqual({ muted: false, volume: 1 })
+    expect(await new LocalRecordStore(storage).getAudio()).toMatchObject({ volume: 1 })
 
     storage.setItem('random-td:audio:v1', JSON.stringify({ muted: false, volume: -5 }))
-    expect(await new LocalRecordStore(storage).getAudio()).toEqual({ muted: false, volume: 0 })
+    expect(await new LocalRecordStore(storage).getAudio()).toMatchObject({ volume: 0 })
+  })
+
+  it('진동 항목이 없는 예전 저장본은 켜짐으로 읽는다', async () => {
+    // 나중에 추가된 항목이라, 이게 없다고 설정 전체를 버리면 안 된다
+    const storage = fakeStorage()
+    storage.setItem('random-td:audio:v1', JSON.stringify({ muted: true, volume: 0.4 }))
+    expect(await new LocalRecordStore(storage).getAudio()).toEqual({
+      muted: true,
+      volume: 0.4,
+      vibrate: true,
+    })
   })
 })

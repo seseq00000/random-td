@@ -26,7 +26,7 @@ export const TOTAL_WAVES = 30
  * 커브 전체를 올려서 되잡는다.
  */
 export const WAVE_POOL_BASE = 1580
-export const WAVE_POOL_GROWTH = 1.3225
+export const WAVE_POOL_GROWTH = 1.335
 
 /** 웨이브 전체 적 HP 총합 */
 export function wavePool(wave: number): number {

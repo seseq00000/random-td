@@ -22,7 +22,13 @@ export function isTokenWave(wave: number): boolean {
  * 물량형 웨이브가 되고, 스플래시·관통 유닛이 많을수록 유리하다.
  */
 export const FEVER = {
-  poolMul: 1.8,
+  /**
+   * ⚠ 벤치 완화 후 재튜닝: 1.8 → 1.65.
+   * 골드는 이미 29% 더 버는데 클리어율이 오히려 낮았다(56% → 48%) —
+   * **보상이 아니라 위험이 문제**라는 뜻이라 난이도 쪽을 내렸다.
+   * countMul 은 그대로라 개체 HP 는 0.75배가 된다 — "물량형 웨이브" 성질은 유지된다.
+   */
+  poolMul: 1.65,
   countMul: 2.2,
   /**
    * ⚠ M4 튜닝: 3.0 → 3.5 → 4.0.
@@ -57,8 +63,12 @@ export const CHALLENGE_BOSS = {
   goldPerWave: 85,
   /** 처치 시 라이프 회복 — 도전이 다음 도전의 밑천이 되는 선순환 */
   lifeReward: 2,
-  /** 누출 시 라이프 손실 */
-  lifePenalty: 5,
+  /**
+   * 누출 시 라이프 손실.
+   * ⚠ 벤치 완화 후 재튜닝: 5 → 3. 위 poolMul 과 같은 이유 —
+   * 도전이 순손해라 "쓸지 말지"가 선택이 아니라 "쓰면 안 되는 것"이 돼 있었다.
+   */
+  lifePenalty: 3,
   speedMul: 0.8,
 } as const
 

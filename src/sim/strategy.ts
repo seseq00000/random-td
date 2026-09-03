@@ -282,12 +282,20 @@ export function playPrep(game: Game, s: Strategy): PrepResult {
     if (game.gold < GACHA_COST) break
 
     if (game.inv.benchFull()) {
-      // 잠기지 않은 것 중 가장 약한 걸 판다
-      const sellable = [...game.bench]
+      /**
+       * 벤치는 **종류**로 센다. 그래서 한 장만 팔면 그 종류가 여전히 남아
+       * 칸이 안 비고 다음 뽑기가 그대로 막힌다 — 자리를 비우려면 **스택을 통째로** 팔아야 한다.
+       *
+       * (한 장만 팔던 시절의 코드를 그대로 두었더니 뽑기가 웨이브당 몇 번에서 끊겨
+       *  경제가 통째로 멈췄다. 규칙을 바꾸면 AI 가 모델링하는 **행동**도 같이 바꿔야 한다.)
+       */
+      const weakest = [...game.bench]
         .filter((b) => !game.inv.isLocked(b.defId))
         .sort((a, b) => getUnit(a.defId).tier - getUnit(b.defId).tier)[0]
-      if (!sellable) break
-      game.sell(sellable.uid)
+      if (!weakest) break
+      for (const u of [...game.bench]) {
+        if (u.defId === weakest.defId && u.awakened === weakest.awakened) game.sell(u.uid)
+      }
     }
     if (!game.draw().ok) break
     draws++

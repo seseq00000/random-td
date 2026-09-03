@@ -20,6 +20,18 @@ export interface RecordStore {
    */
   getDiscovered(): Promise<string[]>
   addDiscovered(defIds: readonly string[]): Promise<void>
+  /**
+   * 소리 설정. 뮤트는 **새로고침해도 유지돼야** 한다 —
+   * 조용한 데서 껐는데 다시 켜면 그게 제일 짜증나는 일이다.
+   */
+  getAudio(): Promise<StoredAudio | null>
+  setAudio(settings: StoredAudio): Promise<void>
+}
+
+export interface StoredAudio {
+  muted: boolean
+  /** 0~1 */
+  volume: number
 }
 
 /** 저장 상한. 넘으면 오래된 것부터 버린다 — localStorage 용량은 유한하다. */
@@ -28,12 +40,14 @@ export const MAX_RECORDS = 200
 const RECORDS_KEY = 'random-td:records:v1'
 const NICKNAME_KEY = 'random-td:nickname:v1'
 const DISCOVERED_KEY = 'random-td:discovered:v1'
+const AUDIO_KEY = 'random-td:audio:v1'
 
 /** 테스트와 SSR 용 인메모리 구현 */
 export class MemoryRecordStore implements RecordStore {
   private records: RunRecord[] = []
   private nickname: string | null = null
   private readonly discovered = new Set<string>()
+  private audio: StoredAudio | null = null
 
   async list(): Promise<RunRecord[]> {
     return [...this.records]
@@ -58,6 +72,12 @@ export class MemoryRecordStore implements RecordStore {
   }
   async addDiscovered(defIds: readonly string[]): Promise<void> {
     for (const id of defIds) this.discovered.add(id)
+  }
+  async getAudio(): Promise<StoredAudio | null> {
+    return this.audio ? { ...this.audio } : null
+  }
+  async setAudio(settings: StoredAudio): Promise<void> {
+    this.audio = { ...settings }
   }
 }
 
@@ -111,6 +131,25 @@ export class LocalRecordStore implements RecordStore {
     } catch {
       return []
     }
+  }
+
+  async getAudio(): Promise<StoredAudio | null> {
+    const raw = this.read(AUDIO_KEY)
+    if (!raw) return null
+    try {
+      const parsed: unknown = JSON.parse(raw)
+      if (typeof parsed !== 'object' || parsed === null) return null
+      const a = parsed as Record<string, unknown>
+      if (typeof a.muted !== 'boolean' || typeof a.volume !== 'number') return null
+      // 손댄 값이 들어와도 스피커가 터지면 안 된다
+      return { muted: a.muted, volume: Math.max(0, Math.min(1, a.volume)) }
+    } catch {
+      return null
+    }
+  }
+
+  async setAudio(settings: StoredAudio): Promise<void> {
+    this.write(AUDIO_KEY, JSON.stringify(settings))
   }
 
   /** 합집합으로 누적한다 — 같은 유닛을 다시 봐도 중복이 쌓이지 않는다. */

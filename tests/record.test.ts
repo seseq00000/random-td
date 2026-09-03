@@ -302,6 +302,8 @@ describe('LocalRecordStore 내구성', () => {
     await expect(store.clear()).resolves.toBeUndefined()
     await expect(store.getDiscovered()).resolves.toEqual([])
     await expect(store.addDiscovered(['t1_single'])).resolves.toBeUndefined()
+    await expect(store.getAudio()).resolves.toBeNull()
+    await expect(store.setAudio({ muted: true, volume: 0.5 })).resolves.toBeUndefined()
   })
 
   it('발견 목록이 깨져 있어도 빈 목록으로 취급한다', async () => {
@@ -311,5 +313,41 @@ describe('LocalRecordStore 내구성', () => {
 
     storage.setItem('random-td:discovered:v1', JSON.stringify(['t1_single', 42, null]))
     expect(await new LocalRecordStore(storage).getDiscovered()).toEqual(['t1_single'])
+  })
+})
+
+describe('소리 설정 저장', () => {
+  const stores: [string, () => RecordStore][] = [
+    ['MemoryRecordStore', () => new MemoryRecordStore()],
+    ['LocalRecordStore', () => new LocalRecordStore(fakeStorage())],
+  ]
+
+  for (const [name, make] of stores) {
+    it(`${name} — 저장한 값이 그대로 돌아온다`, async () => {
+      const store = make()
+      // 저장한 적이 없으면 null — 호출부가 기본값을 쓴다
+      expect(await store.getAudio()).toBeNull()
+
+      await store.setAudio({ muted: true, volume: 0.3 })
+      expect(await store.getAudio()).toEqual({ muted: true, volume: 0.3 })
+    })
+  }
+
+  it('깨진 값이면 null 로 떨어져 기본값을 쓰게 한다', async () => {
+    const storage = fakeStorage()
+    storage.setItem('random-td:audio:v1', 'not json')
+    expect(await new LocalRecordStore(storage).getAudio()).toBeNull()
+
+    storage.setItem('random-td:audio:v1', JSON.stringify({ muted: 'yes', volume: 1 }))
+    expect(await new LocalRecordStore(storage).getAudio()).toBeNull()
+  })
+
+  it('음량은 0~1 로 조인다 — 손댄 값에 스피커가 터지면 안 된다', async () => {
+    const storage = fakeStorage()
+    storage.setItem('random-td:audio:v1', JSON.stringify({ muted: false, volume: 99 }))
+    expect(await new LocalRecordStore(storage).getAudio()).toEqual({ muted: false, volume: 1 })
+
+    storage.setItem('random-td:audio:v1', JSON.stringify({ muted: false, volume: -5 }))
+    expect(await new LocalRecordStore(storage).getAudio()).toEqual({ muted: false, volume: 0 })
   })
 })

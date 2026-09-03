@@ -7,6 +7,7 @@ import { CORE_RADIUS_TILES, SPAWN_RADIUS_TILES } from '../data/field.js'
 import { getUnit } from '../data/units.js'
 import { drawCreature, drawMonster, monsterColor } from './creatures.js'
 import { Effects } from './effects.js'
+import type { FrameEvents } from './observer.js'
 import { drawProjectile, projectileStyle } from './projectiles.js'
 
 /**
@@ -66,17 +67,18 @@ export class Renderer {
   private readonly ctx: CanvasRenderingContext2D
   private readonly fx = new Effects()
 
-  // 프레임 간 차이를 관찰해 이펙트를 만든다 — core 를 건드리지 않기 위한 방식이다.
-  private prevHp = new Map<number, number>()
-  private prevPos = new Map<number, Vec2>()
-  private prevType = new Map<number, EnemyType>()
-  private prevCooldown = new Map<number, number>()
-  /** 직전 위치 + 역할. 역할은 착탄 파티클 색을 투사체와 맞추는 데 쓴다. */
-  private prevProjectile = new Map<number, { pos: Vec2; role: Role }>()
+  // 프레임 간 차이 관찰은 `GameObserver` 가 한다 — 렌더러와 오디오가 같은 이벤트를 쓴다.
+  // 여기 남는 건 **연출이 얼마나 남았는가** 뿐이다.
   private hitFlash = new Map<number, number>()
   private muzzle = new Map<number, number>()
   private shake = 0
-  private prevCoreFlash = 0
+  /**
+   * 투사체의 **화면상** 직전 위치. 꼬리와 진행 방향을 그리는 데만 쓴다.
+   *
+   * 관찰자에도 비슷한 맵이 있지만 목적이 다르다 — 저쪽은 "사라졌으니 착탄"을 알아내려고,
+   * 이쪽은 "어디서 여기로 왔나"를 그리려고 든다. 순수하게 렌더링 관심사라 여기 남긴다.
+   */
+  private trail = new Map<number, Vec2>()
 
   constructor(canvas: HTMLCanvasElement) {
     const ctx = canvas.getContext('2d')
@@ -86,22 +88,16 @@ export class Renderer {
     canvas.height = FIELD_H
   }
 
-  /** 새 판을 시작할 때. 이전 판의 uid 가 남아 있으면 엉뚱한 곳에서 파편이 튄다. */
+  /** 새 판을 시작할 때. 남은 연출이 다음 판으로 새면 안 된다. */
   reset(): void {
-    this.prevHp.clear()
-    this.prevPos.clear()
-    this.prevType.clear()
-    this.prevCooldown.clear()
-    this.prevProjectile.clear()
     this.hitFlash.clear()
     this.muzzle.clear()
     this.fx.clear()
     this.shake = 0
-    this.prevCoreFlash = 0
   }
 
-  draw(game: Game, hints: RenderHints, dt: number): void {
-    this.observe(game, dt)
+  draw(game: Game, hints: RenderHints, dt: number, events: FrameEvents): void {
+    this.consume(game, events, dt)
     this.fx.update(dt)
 
     const { ctx } = this
@@ -126,76 +122,53 @@ export class Renderer {
     ctx.restore()
   }
 
-  // ── 관찰: 프레임 간 차이로 이펙트를 만든다 ─────────────────
+  // ── 이벤트 소비: 관찰은 GameObserver 가 하고 여기선 연출만 건다 ─────
 
-  private observe(game: Game, dt: number): void {
+  private consume(game: Game, ev: FrameEvents, dt: number): void {
     decay(this.hitFlash, dt)
     decay(this.muzzle, dt)
     if (this.shake > 0) this.shake = Math.max(0, this.shake - dt / SHAKE_DECAY)
 
-    // 코어 피격의 상승 엣지에서만 흔든다 (매 프레임 걸면 계속 떨린다)
-    if (game.coreFlash > this.prevCoreFlash) {
+    if (ev.coreHit) {
       this.shake = 1
       this.fx.coreBreach(CENTER_PX.x, CENTER_PX.y)
     }
-    this.prevCoreFlash = game.coreFlash
 
-    // ── 적: 피격 / 처치 ──
-    const live = new Set<number>()
-    for (const e of game.enemies) {
-      live.add(e.uid)
-      const pos = game.enemyPos(e)
-      const before = this.prevHp.get(e.uid)
-
-      if (before !== undefined && e.hp < before) {
-        this.hitFlash.set(e.uid, HIT_FLASH)
-        this.fx.spark(pos.x, pos.y)
-      }
-      this.prevHp.set(e.uid, e.hp)
-      this.prevPos.set(e.uid, pos)
-      this.prevType.set(e.uid, e.type)
+    for (const hit of ev.enemyHits) {
+      this.hitFlash.set(hit.uid, HIT_FLASH)
+      this.fx.spark(hit.pos.x, hit.pos.y)
     }
 
-    for (const uid of [...this.prevHp.keys()]) {
-      if (live.has(uid)) continue
-      const pos = this.prevPos.get(uid)
-      const type = this.prevType.get(uid)
-      if (pos && type) {
-        const big = type === 'boss'
-        this.fx.burst(pos.x, pos.y, monsterColor(type), big ? 18 : 9, big ? 165 : 110)
-      }
-      this.prevHp.delete(uid)
-      this.prevPos.delete(uid)
-      this.prevType.delete(uid)
-      this.hitFlash.delete(uid)
+    for (const death of ev.enemyDeaths) {
+      const big = death.type === 'boss'
+      this.fx.burst(
+        death.pos.x,
+        death.pos.y,
+        monsterColor(death.type),
+        big ? 18 : 9,
+        big ? 165 : 110,
+      )
+      // 죽은 적의 섬광이 남아 있으면 다음 uid 에 잘못 붙을 수 있다
+      this.hitFlash.delete(death.uid)
     }
 
-    // ── 타워: 발사 순간 ──
-    const towerUids = new Set<number>()
-    for (const t of game.towers) {
-      towerUids.add(t.uid)
-      const before = this.prevCooldown.get(t.uid)
-      // 쿨다운이 올라갔다 = 방금 쐈다
-      if (before !== undefined && t.cooldown > before) this.muzzle.set(t.uid, MUZZLE_FLASH)
-      this.prevCooldown.set(t.uid, t.cooldown)
-    }
-    for (const uid of [...this.prevCooldown.keys()]) {
-      if (!towerUids.has(uid)) {
-        this.prevCooldown.delete(uid)
-        this.muzzle.delete(uid)
-      }
-    }
+    for (const fire of ev.towerFires) this.muzzle.set(fire.uid, MUZZLE_FLASH)
 
-    // ── 투사체: 사라진 = 착탄. 그 자리에 투사체 색으로 파편을 튀긴다 ──
-    const projUids = new Set<number>()
-    for (const p of game.projectiles) projUids.add(p.uid)
-    for (const [uid, prev] of [...this.prevProjectile]) {
-      if (projUids.has(uid)) continue
-      const style = projectileStyle(prev.role)
+    for (const hit of ev.projectileHits) {
+      const style = projectileStyle(hit.role)
       // 포탄은 광역이라 더 크게 터진다 — 스플래시 반경이 눈에 보여야 한다
-      const heavy = prev.role === 'splash'
-      this.fx.burst(prev.pos.x, prev.pos.y, style.color, heavy ? 12 : 5, heavy ? 130 : 70)
-      this.prevProjectile.delete(uid)
+      const heavy = hit.role === 'splash'
+      this.fx.burst(hit.pos.x, hit.pos.y, style.color, heavy ? 12 : 5, heavy ? 130 : 70)
+    }
+
+    // 사라진 타워·투사체의 잔여 연출 정리
+    const towerUids = new Set(game.towers.map((t) => t.uid))
+    for (const uid of [...this.muzzle.keys()]) {
+      if (!towerUids.has(uid)) this.muzzle.delete(uid)
+    }
+    const projUids = new Set(game.projectiles.map((p) => p.uid))
+    for (const uid of [...this.trail.keys()]) {
+      if (!projUids.has(uid)) this.trail.delete(uid)
     }
   }
 
@@ -397,7 +370,7 @@ export class Renderer {
     for (const p of game.projectiles) {
       const role = getUnit(p.sourceDefId).role
       const style = projectileStyle(role)
-      const prev = this.prevProjectile.get(p.uid)
+      const prev = this.trail.get(p.uid)
 
       // 꼬리 — 직전 위치까지 선을 그으면 속도가 눈에 보인다.
       // 색을 투사체와 공유해서 "저 파란 게 저기서 왔다"가 이어진다.
@@ -408,14 +381,14 @@ export class Renderer {
         ctx.lineWidth = style.trailWidth
         ctx.lineCap = 'round'
         ctx.beginPath()
-        ctx.moveTo(prev.pos.x, prev.pos.y)
+        ctx.moveTo(prev.x, prev.y)
         ctx.lineTo(p.x, p.y)
         ctx.stroke()
         ctx.restore()
       }
 
       const target = enemyPos.get(p.targetUid)
-      const from = prev?.pos
+      const from = prev
       const angle =
         from && (from.x !== p.x || from.y !== p.y)
           ? Math.atan2(p.y - from.y, p.x - from.x)
@@ -424,7 +397,7 @@ export class Renderer {
             : 0
 
       drawProjectile(ctx, role, p.x, p.y, angle)
-      this.prevProjectile.set(p.uid, { pos: { x: p.x, y: p.y }, role })
+      this.trail.set(p.uid, { x: p.x, y: p.y })
     }
   }
 }

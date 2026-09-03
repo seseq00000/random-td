@@ -19,6 +19,8 @@ import { sellValue } from './data/slots.js'
 import { CELEBRATE_FROM_TIER, tierColor, tierLabel } from './data/tiers.js'
 import { getUnit } from './data/units.js'
 import { TYPE_MODIFIERS } from './data/waves.js'
+import { AudioEngine, DEFAULT_AUDIO } from './audio/engine.js'
+import { GameObserver } from './render/observer.js'
 import { ROLE_STYLE, Renderer } from './render/renderer.js'
 import { createRecordStore } from './storage/recordStore.js'
 import { celebrate } from './ui/celebrate.js'
@@ -36,6 +38,7 @@ const toastEl = $<HTMLDivElement>('#toast')
 const celebrateEl = $<HTMLDivElement>('#celebrate')
 const startBtn = $<HTMLButtonElement>('#btn-start')
 const drawBtn = $<HTMLButtonElement>('#btn-draw')
+const muteBtn = $<HTMLButtonElement>('#btn-mute')
 
 const sheetEl = $<HTMLElement>('#sheet')
 const sheetBackdrop = $<HTMLDivElement>('#sheet-backdrop')
@@ -67,6 +70,33 @@ const tabField = $<HTMLElement>('#tab-field')
 
 const store = createRecordStore()
 const renderer = new Renderer(canvas)
+const observer = new GameObserver()
+const audio = new AudioEngine()
+
+// ── 소리 ───────────────────────────────────────────────────
+// 브라우저는 사용자 제스처 전에는 소리를 막는다. 게이트의 "시작" 버튼이 자연스러운
+// 해제 지점이지만, 결과 화면에서 "다시 하기"로 들어오는 경로도 있어서
+// **아무 곳이나 처음 누를 때**도 열어준다.
+function unlockAudio(): void {
+  audio.unlock()
+}
+window.addEventListener('pointerdown', unlockAudio, { once: true })
+window.addEventListener('keydown', unlockAudio, { once: true })
+
+function syncMuteButton(): void {
+  const muted = audio.muted
+  muteBtn.textContent = muted ? '🔇' : '🔊'
+  muteBtn.classList.toggle('off', muted)
+  muteBtn.title = muted ? '소리 켜기' : '소리 끄기'
+  muteBtn.setAttribute('aria-label', muteBtn.title)
+}
+
+muteBtn.addEventListener('click', () => {
+  audio.unlock()
+  const muted = audio.toggleMute()
+  syncMuteButton()
+  void store.setAudio({ ...audio.getSettings(), muted })
+})
 
 // ── 판 단위 상태 ───────────────────────────────────────────
 
@@ -93,6 +123,7 @@ function startNewGame(): void {
   lastSignature = ''
   closeSheet()
   // 이전 판의 uid 가 남아 있으면 엉뚱한 자리에서 파편이 튄다
+  observer.reset()
   renderer.reset()
   /**
    * 합성은 **직접 누르는 게 기본**이다.
@@ -199,6 +230,12 @@ async function boot(): Promise<void> {
   discovered = new Set(await store.getDiscovered())
   const saved = await store.getNickname()
   if (saved) nicknameInput.value = saved
+
+  // 뮤트는 새로고침해도 유지된다. 저장된 게 없으면 기본값(켜짐·음량 0.6).
+  audio.applySettings((await store.getAudio()) ?? DEFAULT_AUDIO)
+  syncMuteButton()
+  audio.setScene('lobby')
+
   renderRanking(gateRankingEl, null)
   nicknameInput.focus()
 }
@@ -214,6 +251,9 @@ async function enter(): Promise<void> {
   gateError.hidden = true
   nickname = normalized
   await store.setNickname(nickname)
+
+  // 게이트의 "시작" 버튼이 소리를 여는 가장 자연스러운 지점이다
+  audio.unlock()
 
   gateEl.hidden = true
   resultEl.hidden = true
@@ -233,6 +273,7 @@ againBtn.addEventListener('click', () => {
 changeNameBtn.addEventListener('click', () => {
   resultEl.hidden = true
   gateEl.hidden = false
+  audio.setScene('lobby')
   nicknameInput.value = nickname
   renderRanking(gateRankingEl, null)
   nicknameInput.focus()
@@ -245,6 +286,8 @@ async function finishRun(): Promise<void> {
   recordSaved = true
   running = false
   closeSheet()
+  // 판이 끝났는데 전투 BGM 이 계속 돌면 결과 화면이 안 읽힌다
+  audio.setScene('lobby')
 
   const record = buildRecord(game, {
     nickname,
@@ -346,9 +389,13 @@ drawBtn.addEventListener('click', () => {
   const result = game.draw()
   if (!result.ok) {
     toast(drawErrorText(result.reason))
+    audio.deny()
   } else if (getUnit(result.defId).tier >= CELEBRATE_FROM_TIER) {
     // 등급명이 붙는 티어부터만 축하한다 — T1·T2 까지 띄우면 특별함이 사라진다
     celebrate(celebrateEl, result.defId)
+    audio.celebrate(getUnit(result.defId).tier)
+  } else {
+    audio.draw()
   }
   syncAll()
 })
@@ -370,8 +417,10 @@ function placeUnit(uid: number): void {
         ? `배치할 공간이 없다 (${game.towers.length}/${game.slotsOwned}칸) — 필드 탭에서 슬롯을 사라`
         : '배치할 수 없다',
     )
+    audio.deny()
     return
   }
+  audio.place()
   syncAll()
 }
 
@@ -482,8 +531,13 @@ function renderBench(): void {
       act.textContent = '합성'
       act.title = `${def.name} ${MERGE_COUNT}개 → 상위 티어 랜덤 1종 (보유 ${total})`
       act.addEventListener('click', () => {
-        if (game.mergeManually(g.defId)) syncAll()
-        else toast('합성할 수 없다')
+        if (game.mergeManually(g.defId)) {
+          audio.merge()
+          syncAll()
+        } else {
+          toast('합성할 수 없다')
+          audio.deny()
+        }
       })
     } else {
       act.className = 'tile-act place'
@@ -566,10 +620,12 @@ function renderUnitSheet(): void {
     merge.textContent = `합성하기 — ${MERGE_COUNT}개 → 상위 티어`
     merge.addEventListener('click', () => {
       if (game.mergeManually(unit.defId)) {
+        audio.merge()
         closeSheet()
         syncAll()
       } else {
         toast('합성할 수 없다')
+        audio.deny()
       }
     })
     sheetBody.appendChild(merge)
@@ -744,7 +800,12 @@ function renderFieldSheet(): void {
     buy.disabled = !canBuy || gold < cost
     buy.addEventListener('click', () => {
       const result = game.buySlot()
-      if (!result.ok) toast(result.reason === 'max-slots' ? '슬롯은 최대다' : '골드가 부족하다')
+      if (result.ok) {
+        audio.buy()
+      } else {
+        toast(result.reason === 'max-slots' ? '슬롯은 최대다' : '골드가 부족하다')
+        audio.deny()
+      }
       syncAll()
     })
   }
@@ -981,8 +1042,17 @@ function frame(now: number): void {
     accumulator = 0
   }
 
+  // 관찰자가 프레임 간 차이로 이벤트를 뽑고, 렌더러와 오디오가 **같은 이벤트**를 쓴다.
+  // 양쪽에서 따로 diff 하면 두 로직이 반드시 어긋난다.
+  const events = observer.observe(game)
+  audio.applyEvents(events)
+  // BGM 은 곡을 바꾸지 않고 레이어만 켠다 — 준비↔전투가 매 웨이브 일어나므로
+  // 곡이 바뀌면 그때마다 끊겨서 오히려 산만하다
+  if (running) audio.setScene(game.phase === 'battle' ? 'battle' : 'prep')
+  audio.tick()
+
   // 이펙트는 실제 경과 시간으로 돌린다 — 시뮬은 고정 스텝이지만 연출은 그럴 이유가 없다
-  renderer.draw(game, { selectedTowerUid }, elapsed)
+  renderer.draw(game, { selectedTowerUid }, elapsed, events)
 
   // 시뮬 진행이 패널 내용을 바꾸는 지점들(웨이브 전환, 미션 달성, 토큰 충전)을
   // 서명 하나로 감지한다. 매 프레임 DOM 을 다시 그리지 않기 위한 것이다.
